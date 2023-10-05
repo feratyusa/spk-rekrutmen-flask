@@ -183,10 +183,13 @@ def data_form():
     # File handler
     file = request.files['file']
     file_path = ''
+    user_upload_folder = os.path.join(app.config['UPLOAD_FOLDER'], current_user.username)
+    if(os.path.exists(user_upload_folder) is False):
+        os.mkdir(user_upload_folder)
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
-        file_path=os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename)) # Save file to designated upload folder
+        file_path=os.path.join(user_upload_folder, filename)
+        file.save(os.path.join(user_upload_folder, filename)) # Save file to designated upload folder
     data = Data(
         name=request.form["name"],
         file_path=file_path,
