@@ -1,17 +1,62 @@
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy_serializer import SerializerMixin
+from sqlalchemy.sql import func
 
 # Database Initialization
 class Base(DeclarativeBase):
   pass
 
-Database = SQLAlchemy(model_class=Base)
+db = SQLAlchemy(model_class=Base)
+
+# This could be expanded to fit the needs of your application. For example,
+# it could track who revoked a JWT, when a token expires, notes for why a
+# JWT was revoked, an endpoint to un-revoked a JWT, etc.
+# Making jti an index can significantly speed up the search when there are
+# tens of thousands of records. Remember this query will happen for every
+# (protected) request,
+# If your database supports a UUID type, this can be used for the jti column
+# as well
+class TokenBlocklist(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    jti = db.Column(db.String(36), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, nullable=False)
 
 # Models
-class User(Database.Model, SerializerMixin):
-    id: Mapped[int] = mapped_column(Database.Integer, primary_key=True)
-    username: Mapped[str] = mapped_column(Database.String, unique=True, nullable=False)
-    password: Mapped[str] = mapped_column(Database.String)
-    email: Mapped[str] = mapped_column(Database.String)
+class User(db.Model, SerializerMixin):
+  serialize_only = ('id', 'username', 'password', 'created_at', 'updated_at', 'data.name')
+  serialize_rules = ()
+
+  id = db.Column(db.Integer, primary_key=True)
+  username = db.Column(db.String, unique=True, nullable=False)
+  password = db.Column(db.String)
+  email = db.Column(db.String)
+  created_at = db.Column(db.TIMESTAMP, server_default=func.now())
+  updated_at = db.Column(db.TIMESTAMP, onupdate=func.current_timestamp())
+
+  data = db.relationship('Data', backref='user')
+
+class Data(db.Model, SerializerMixin):
+  serialize_only = ('id', 'name', 'file_path', 'created_at', 'updated_at', 'user_id', 'datadetail.criteria')
+  serialize_rules = ()
+
+  id = db.Column(db.Integer, primary_key=True)
+  name = db.Column(db.String, nullable=False)
+  file_path = db.Column(db.String, nullable=False)
+  created_at = db.Column(db.TIMESTAMP, server_default=func.now())
+  updated_at = db.Column(db.TIMESTAMP, onupdate=func.current_timestamp())
+
+  user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+  datadetail = db.relationship('DataDetail', backref='data')
+   
+class DataDetail(db.Model, SerializerMixin):
+  serialize_only = ('id', 'criteria', 'type', 'data_id')
+  serialize_rules = ()
+
+  id = db.Column(db.Integer, primary_key=True)
+  criteria = db.Column(db.String)
+  type = db.Column(db.String)
+  created_at = db.Column(db.TIMESTAMP, server_default=func.now())
+  updated_at = db.Column(db.TIMESTAMP, onupdate=func.current_timestamp())
+
+  data_id = db.Column(db.Integer, db.ForeignKey('data.id'))
