@@ -22,8 +22,16 @@ class TokenBlocklist(db.Model):
     jti = db.Column(db.String(36), nullable=False, index=True)
     created_at = db.Column(db.DateTime, nullable=False)
 
+# DataDetail <--> MultiCriteria
+datadetail_multicriteria = db.Table('datadetail_multicriteria',
+  db.Column('datadetail_id', db.Integer, db.ForeignKey('datadetail.id')),
+  db.Column('multicriteria_id', db.Integer, db.ForeignKey('multicriteria.id'))
+)
+
 # Models
 class User(db.Model, SerializerMixin):
+  __tablename__ = "user"
+
   serialize_only = ('id', 'username', 'password', 'created_at', 'updated_at', 'data.name')
   serialize_rules = ()
 
@@ -36,8 +44,13 @@ class User(db.Model, SerializerMixin):
 
   data = db.relationship('Data', backref='user')
 
+  def __repr__(self):
+    return f'<User "{self.username}">' 
+
 class Data(db.Model, SerializerMixin):
-  serialize_only = ('id', 'name', 'file_path', 'created_at', 'updated_at', 'user_id', 'datadetail.criteria')
+  __tablename__ = "data"
+
+  serialize_only = ('id', 'name', 'file_path', 'created_at', 'updated_at', 'user_id', 'datadetails.criteria')
   serialize_rules = ()
 
   id = db.Column(db.Integer, primary_key=True)
@@ -47,9 +60,14 @@ class Data(db.Model, SerializerMixin):
   updated_at = db.Column(db.TIMESTAMP, onupdate=func.current_timestamp())
 
   user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-  datadetail = db.relationship('DataDetail', backref='data')
+  datadetails = db.relationship('DataDetail', backref='data')
+
+  def __repr__(self):
+    return f'<Data "{self.username}">' 
    
 class DataDetail(db.Model, SerializerMixin):
+  __tablename__ = "datadetail"
+
   serialize_only = ('id', 'criteria', 'type', 'data_id')
   serialize_rules = ()
 
@@ -59,4 +77,22 @@ class DataDetail(db.Model, SerializerMixin):
   created_at = db.Column(db.TIMESTAMP, server_default=func.now())
   updated_at = db.Column(db.TIMESTAMP, onupdate=func.current_timestamp())
 
+  mcdetails = db.relationship('MultiCriteria', secondary=datadetail_multicriteria, backref='cdetails')
   data_id = db.Column(db.Integer, db.ForeignKey('data.id'))
+
+  def __repr__(self):
+    return f'<DataDetail "{self.name}">' 
+
+class MultiCriteria(db.Model, SerializerMixin):
+  __tablename__ = "multicriteria"
+
+  serialize_only = ('id', 'name')
+  serialize_rules = ()
+
+  id = db.Column(db.Integer, primary_key=True)
+  name = db.Column(db.String)
+  created_at = db.Column(db.TIMESTAMP, server_default=func.now())
+  updated_at = db.Column(db.TIMESTAMP, onupdate=func.current_timestamp())
+
+  def __repr__(self):
+    return f'<MultiCriteria "{self.name}">' 
