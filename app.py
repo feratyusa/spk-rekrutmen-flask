@@ -18,7 +18,10 @@ from database import User
 from database import Data
 from database import DataDetail
 from database import TokenBlocklist
+from database import MultiCriteria
 from database import db
+
+from error_handler import RaiseError
 
 load_dotenv()
 
@@ -31,6 +34,10 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1000 * 1000 # 16MB
 
 # Configure Bcrypt
 bcrypt = Bcrypt(app)
+
+@app.errorhandler(RaiseError)
+def raise_error(e):
+    return jsonify(e.to_dict()), e.status_code
 
 """ FILE UPLOAD CONFIG """
 ALLOWED_EXTENSIONS = {'csv', 'xlsx'}
@@ -100,7 +107,7 @@ def home():
 """
 USER ROUTES
 
-CREATE, EDIT, LOGIN, LOGOUT, LIST, DETAIL
+CREATE, EDIT, LOGIN, LOGOUT, LIST, READ
 """
 # USER LIST
 @app.get("/users")
@@ -109,11 +116,11 @@ def user_list():
     users_json = []
     for u in users:
         users_json.append(u.to_dict())
-    return jsonify(users_json)
+    return jsonify(users_json), 200
 
 # USER CREATE
 # Parameter: username, password, email
-@app.post("/users/create")
+@app.post("/user/create")
 def user_create():
     user = User(
         username=request.form["username"],
@@ -122,23 +129,44 @@ def user_create():
     )
     db.session.add(user)
     db.session.commit()
-    return jsonify(user.to_dict())
+    return jsonify(user.to_dict()), 200
 
-# USER GET
-@app.get("/user/<user_id>")
-def user_detail(user_id):
-    user = db.get_or_404(User, user_id)
-    return jsonify(user.to_dict())
+# USER READ
+@app.get("/user/details")
+@jwt_required()
+def user_detail():
+    user = User.query.filter_by(id=current_user.id).one()
+    return jsonify(user.to_dict()), 200
 
 # USER EDIT
 # Param: username, email
-@app.post("/user/<user_id>/edit")
+@app.put("/user/update")
 @jwt_required()
-def user_edit(user_id):
-    user = db.get_or_404(User, user_id)
+def user_edit():
+    user = User.query.filter_by(id=current_user.id).one()
     user.username = request.form["username"]
     user.email = request.form["email"]
-    return redirect('/user/{}'.format(user_id))
+    return redirect('/user/details')
+
+# USER CHANGE PASSWORD
+# Param: password
+@app.put("/user/change-password")
+@jwt_required()
+def user_change_password():
+    user = User.query.filter_by(id=current_user.id).one()
+    new_password = bcrypt.generate_password_hash(request.form["password"]).decode('utf-8')
+    user.password = new_password
+    db.session.commit()
+    return jsonify(msg="Change password success"), 200
+
+# USER DELETE
+@app.delete("/user/delete")
+@jwt_required()
+def user_delete():
+    user = User.query.filter_by(username=current_user.username).one()
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify(msg="User deleted"), 200
 
 # USER LOGIN
 # Param: username, password
@@ -147,14 +175,14 @@ def login_post():
     user = User.query.filter(User.username == request.form["username"]).first()
     # Username Not Found
     if user == None:
-        return "404 Username Not Found"
+        raise RaiseError("Username or Password is wrong", 403)
     
     # Check Password Hash
     if bcrypt.check_password_hash(user.password, request.form["password"]):
         access_token = create_access_token(identity=user)
         return jsonify(access_token=access_token)
     else:
-        return "Login not success"
+        raise RaiseError("Username or Password is wrong", 403)
     
 # USER LOGOUT
 # Endpoint for revoking the current users access token. Saved the unique
@@ -166,7 +194,7 @@ def modify_token():
     now = datetime.now(timezone.utc)
     db.session.add(TokenBlocklist(jti=jti, created_at=now))
     db.session.commit()
-    return jsonify(msg="JWT revoked")
+    return jsonify(msg="JWT Revoked"), 200
 
 
 """
@@ -175,46 +203,74 @@ DATA ROUTES
 DATA CREATE EDIT, DATA LIST
 DATADETAIL CREATE EDIT, DATADETAIL LIST
 """
-# DATA FORM
+# DATA CREATE
 # Param: Name, File
-@app.post("/data/form")
+@app.post("/data/create")
 @jwt_required()
 def data_form():
     # File handler
     file = request.files['file']
     file_path = ''
-    user_upload_folder = os.path.join(app.config['UPLOAD_FOLDER'], current_user.username)
+    user_upload_folder = os.path.join(app.config['UPLOAD_FOLDER'], current_user.username, 'data')
     if(os.path.exists(user_upload_folder) is False):
         os.mkdir(user_upload_folder)
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
         file_path=os.path.join(user_upload_folder, filename)
-        file.save(os.path.join(user_upload_folder, filename)) # Save file to designated upload folder
     data = Data(
         name=request.form["name"],
         file_path=file_path,
         user_id=current_user.id
     )
+    file.save(file_path, filename) # Save file to designated upload folder
     db.session.add(data)
     db.session.commit()
-    return jsonify(data.to_dict())
+    return jsonify(data.to_dict()), 200
 
+# DATA READ
 @app.get("/data")
 @jwt_required()
 def data_list():
-    data = Data.query.filter_by(id=current_user.id).all()
+    data = Data.query.filter_by(user_id=current_user.id).all()
+    data_json = []
+    for d in data:
+        data_json.append(d.to_dict())
+    return jsonify(data_json), 200
+
+# DATA UPDATE
+# Param: name, file_path
+@app.get("/data/<data_id>/update")
+@jwt_required()
+def data_update(data_id):
+    data = db.get_or_404(Data, data_id)
+    if data.id != current_user.id:
+        raise RaiseError("Forbidden Resource", 403)
+    data = Data.query.filter_by(id=data_id).one()
     data_json = []
     for d in data:
         data_json.append(d.to_dict())
     return jsonify(data_json)
 
-# DATA DETAIL FORM
+# DATA DELETE
+@app.delete("/data/<data_id>/delete")
+@jwt_required
+def data_delete(data_id):
+    data = db.get_or_404(Data, data_id)
+    if data.id != current_user.id:
+        raise RaiseError("Forbidden Resource", 403)
+    db.session.delete(data)
+    db.session.commit()
+    return jsonify(msg="Data deleted"), 200
+
+# DATA DETAIL CREATE
 # Param: details (JSON)
-@app.post("/data/<data_id>/details/form")
+@app.post("/data/<data_id>/details/create")
+@jwt_required()
 def data_detail_form(data_id):
     data = db.get_or_404(Data, data_id)
+    if data.id != current_user.id:
+        raise RaiseError("Forbidden Resource", 403)
     details = request.json
-
     # Update existing Criteria
     if DataDetail.query.filter_by(data_id=data.id).first() is not None:
         counter = 0
@@ -236,13 +292,39 @@ def data_detail_form(data_id):
     return redirect('/data/{}/details'.format(data_id))
 
 @app.get('/data/<data_id>/details')
+@jwt_required()
 def data_detail(data_id):
     data = db.get_or_404(Data, data_id)
+    if data.user_id != current_user.id:
+        raise RaiseError("Forbidden Resource", 403)
+    
     details = DataDetail.query.filter_by(data_id=data_id).all()
     details_dict = []
     for d in details:
         details_dict.append(d.to_dict())
     return jsonify(details_dict)
+
+# MULTI CRITERIA DETAIL
+# Param: JSON Object
+""" 
+{
+    "multicriteria": ["tata boga", "tata busana", "kendaraan ringan"]
+}
+"""
+@app.put('/data/<data_id>/detail/<detail_id>/update')
+@jwt_required()
+def multi_criteria_post(data_id, detail_id):
+    data_detail = db.get_or_404(DataDetail, detail_id)
+    req = request.json
+    multicriteria = req["multicriteria"]
+    for mc in multicriteria:
+        criteria = MultiCriteria(
+            name=mc
+        )
+        db.session.add(criteria)
+        data_detail.mcdetails.append(criteria)
+        db.session.commit()
+    return redirect('/data/{}/details'.format(data_id))
 
 @app.get("/who_am_i")
 @jwt_required()
