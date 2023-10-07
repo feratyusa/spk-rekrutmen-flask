@@ -4,3 +4,6 @@ psycopg2-binary
 flask-jwt-extended
 flask_sqlalchemy
 SQLAlchemy-serializer
+flask-bcrypt
+flask-jwt-extended
+pandas
