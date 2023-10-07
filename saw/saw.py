@@ -1,4 +1,5 @@
 import pandas
+from flask import jsonify
 
 BENEFIT = 1
 COST = 0
@@ -46,7 +47,7 @@ class Criteria():
         elif self.crisp_type == self.__sub_string:
             return self.sub_string_criteria(rowValue)
         else:
-            return "Error Message"
+            return jsonify(msg="Somthing went wrong when Processing Criteria")
     
     """ 
     NUMBER CRISP TYPE
@@ -75,27 +76,36 @@ class Criteria():
             return self.check_in_between_inclusive(value, comparator)
         elif expression==self.__in_between:
             return self.check_in_between(value, comparator)
-        return "Error Message"
+        return jsonify(msg="Something went wrong when Processing Number Criteria")
             
     def number_criteria(self, rowValue):
         for c in self.crisps:
             if self.check_expression_value(rowValue, c.detail[0], c.detail[1]): # If true return Weight Value
                 return c.weight
-        return "Error Message"
+        return jsonify(msg="Somthing went wrong when Processing Number Criteria")
     
     """
     STRING CRISP TYPE
     """
     def string_criteria(self, rowValue):
-        pass
+        for c in self.crisps:
+            if rowValue.lower() == c.detail[0].lower():
+                return c.weight
+        return jsonify(msg='Something went wrong when Procesing String Criteria')
 
     """
     SUB STRING CRISP TYPE
     """
     def sub_string_criteria(self, rowValue):
-        pass
+        weight = 1
+        try:
+            for c in self.crisps:
+                if c.detail[0].lower() in rowValue.lower() and weight < c.weight:
+                    weight = c.weight
+            return weight
+        except:
+            return jsonify(msg='Something went wrong when Processing Substring Criteria')
         
-
 class Crisp():
     def __init__(self, detail, weight):
         self.detail = detail
@@ -106,7 +116,6 @@ class Crisp():
         
 
 data = pandas.read_csv('mini_dummy.csv')
-decision_matrix = []
 
 # First Criteria
 first_crisp = Crisp(detail=[2, [80]], weight=3)
@@ -134,12 +143,12 @@ second_c = Criteria(
 )
 
 # Third Criteria
-first_crisp = Crisp(detail=["Foundation"], weight=6)
-second_crisp = Crisp(detail=["Body Painting"], weight=5)
-third_crisp= Crisp(detail=["Mascara"], weight=4)
-fourth_crisp = Crisp(detail=["Coreldraw"], weight=3)
-fifth_crisp= Crisp(detail=["Kamera"], weight=2)
-sixth_crisp = Crisp(detail=["Mesin Jahit"], weight=1)
+first_crisp = Crisp(detail=["Foundation"], weight=7)
+second_crisp = Crisp(detail=["Body Painting"], weight=6)
+third_crisp= Crisp(detail=["Mascara"], weight=5)
+fourth_crisp = Crisp(detail=["Coreldraw"], weight=4)
+fifth_crisp= Crisp(detail=["Kamera"], weight=3)
+sixth_crisp = Crisp(detail=["Mesin Jahit"], weight=2)
 crisps = []
 crisps.extend([first_crisp, second_crisp, third_crisp, fourth_crisp, fifth_crisp, sixth_crisp])
 
@@ -164,21 +173,17 @@ criterias.extend([first_c, second_c, third_c, fourth_c])
 # Make Decision Matrix
 # Don't include ID and Name
 data_truncate = data.drop(columns=[data.columns[0],data.columns[1]], axis=1)
+decision_matrix = {}
 criteria_num=0
 for column in data_truncate:
+    dm_list = []
     for value in data_truncate[column].values:
-        decision_matrix.append(criterias[criteria_num].get_weight_value(value))
+        dm_list.append(criterias[criteria_num].get_weight_value(value))
+    d_list = {column:dm_list}
+    decision_matrix.update(d_list)
     criteria_num += 1
-    break
 
+dm = pandas.DataFrame(data=decision_matrix)
+print(dm)
 
-
-# Iterate over column names
-for column in data_truncate:
-     
-    # Select column contents by column
-    # name using [] operator
-    columnSeriesObj = data_truncate[column]
-    print(columnSeriesObj.values)
-    break
-print(decision_matrix)
+# normalization_matrix
