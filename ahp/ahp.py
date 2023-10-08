@@ -229,7 +229,6 @@ def generate_crisp_string(crisp_list, importance_list):
     return crisps
 
 
-
 """ 
 ANALITYCAL HIERARCHY PROCESS METHOD
 1. Pair wise comparison for each criteria and crisp
@@ -242,7 +241,39 @@ ANALITYCAL HIERARCHY PROCESS METHOD
 8. Sum the total of each row
 9. Rank based on the result of number 8
 """
-data = pandas.read_csv('mini_dummy.csv')
+
+def generate_ahp_result(data, criterias_list):
+    data_truncate = data.drop(columns=[data.columns[0],data.columns[1]], axis=1)
+    result_matrix = {}
+    criteria_num=0
+    for column in data_truncate:
+        dm_list = []
+        for value in data_truncate[column].values:
+            dm_list.append(criterias_list[criteria_num].get_importance_final_value(value))
+        d_list = {column:dm_list}
+        result_matrix.update(d_list)
+        criteria_num += 1
+
+    rm = pandas.DataFrame(data=result_matrix)
+
+    # Calculate Sum of each criteria for each rows
+    rm['Total'] = rm.sum(axis=1, numeric_only=True)
+
+    # Insert again the ID row and identifier row (name or something else)
+    rm.insert(0, data.columns.values[0], data[data.columns.values[0]].to_list())
+    rm.insert(1, data.columns.values[1], data[data.columns.values[1]].to_list())
+
+    # Rank the result based on total value by Descending order
+    rm['Ranking'] = rm['Total'].rank(method='max', ascending=False)
+
+    # Sort DataFrame Ascending by Ranking Columns
+    rm = rm.sort_values(by=['Ranking'])
+    return(rm)
+
+
+#######################
+# API INPUT SIMULATION
+#######################
 
 # Get all the criteria name first
 criterias_name = ["Mindset", "Skillset", "Toolset", "Pengalaman"]
@@ -257,12 +288,11 @@ fourth_c = AHP_Criteria(name="Pengalaman", crisp_type=0, criteria_list=criterias
 criterias_list = []
 criterias_list.extend([first_c, second_c, third_c, fourth_c])
 
-input_importance(criterias=criterias_list, importance_list=importance_number)
-calculate_priority(criteria_list=criterias_name, criterias=criterias_list)
+input_importance(criterias=criterias_list, importance_list=importance_number) # Include it in api input
+calculate_priority(criteria_list=criterias_name, criterias=criterias_list) # This one too and so on
 
 """ 
 CRISP FOR EACH CRITERIA
-It will use the same class as Critera
 """
 crisps_list = []
 
@@ -286,34 +316,11 @@ importance_number = [3,5,3]
 fourth_crisp = generate_crisp_number(fourth_crisp_list, importance_number)
 criterias_list[3].update_crisps(fourth_crisp)
 
+#######################
 
-"""
-MAKE RESULT MATRIX
-"""
-print(criterias_list[0].priority)
-data_truncate = data.drop(columns=[data.columns[0],data.columns[1]], axis=1)
-result_matrix = {}
-criteria_num=0
-for column in data_truncate:
-    dm_list = []
-    for value in data_truncate[column].values:
-        dm_list.append(criterias_list[criteria_num].get_importance_final_value(value))
-    d_list = {column:dm_list}
-    result_matrix.update(d_list)
-    criteria_num += 1
-
-rm = pandas.DataFrame(data=result_matrix)
-
-# Calculate Sum of each criteria for each rows
-rm['Total'] = rm.sum(axis=1, numeric_only=True)
-
-# Insert again the ID row and identifier row (name or something else)
-rm.insert(0, data.columns.values[0], data[data.columns.values[0]].to_list())
-rm.insert(1, data.columns.values[1], data[data.columns.values[1]].to_list())
-
-# Rank the result based on total value by Descending order
-rm['Ranking'] = rm['Total'].rank(method='max', ascending=False)
-
-# Sort DataFrame Ascending by Ranking Columns
-rm = rm.sort_values(by=['Ranking'])
-rm.to_csv('out.csv', index=False)
+###############
+# USAGE EXAMPLE
+###############
+data = pandas.read_csv('mini_dummy.csv')
+result = generate_ahp_result(data=data, criterias_list=criterias_list)
+print(result)
