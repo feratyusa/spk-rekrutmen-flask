@@ -1,10 +1,9 @@
 import pandas
-import numpy as np
 from flask import jsonify
 
 # Random Consistency Index
 # Call it by RANDOM_CONSISTENCY_INDEX[total_criteria - 1]
-RANDOM_CONSISTENCY_INDEX = [0, 0, 0.58, 0.90, 1.12, 1.24, 1.32, 1.41, 1.45, 1.49]
+RANDOM_CONSISTENCY_INDEX = [0, 0, 0.58, 0.90, 1.12, 1.24, 1.32, 1.41, 1.45, 1.49] # RI of 1 - 10
 
 """ 
 Importance Value Passed will update 2 criteria importance passed
@@ -27,8 +26,8 @@ def check_consistency_ratio(criteria_list, comparison_matrix, normalization_matr
 
 """ 
 This will create make the criterias/crips value passed and give it priority value
-Return True if it passed the concistency ratio criteria
-Return False if it failed the consistenct ratio criteria
+Return criteria list if it passed the concistency ratio criteria
+Return False if it failed the consistency ratio criteria
 """
 def calculate_priority(criteria_list, criterias):
     # Make Comparison Matrix
@@ -230,6 +229,19 @@ def generate_crisp_string(crisp_list, importance_list):
     return crisps
 
 
+
+""" 
+ANALITYCAL HIERARCHY PROCESS METHOD
+1. Pair wise comparison for each criteria and crisp
+2. Normalize matrix based on result of number one
+3. Calculate the sum of normalize value for each row
+4. Get the priority value by resul of number 3 divided by number of criteria/crisp
+5. Check if consistency ratio is below 0.1 (10%)
+6. If false, repeat from number 1
+7. Get the alternative priority value by criteria priority value * crisp priority value
+8. Sum the total of each row
+9. Rank based on the result of number 8
+"""
 data = pandas.read_csv('mini_dummy.csv')
 
 # Get all the criteria name first
