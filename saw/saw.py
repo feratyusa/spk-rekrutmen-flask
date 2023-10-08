@@ -4,12 +4,6 @@ from flask import jsonify
 BENEFIT = 1
 COST = 0
 
-""" 
-crisp = {
-    "detail": ">80"
-    "weight": "40"
-}
-"""
 class Criteria():
     # Criteria Type
     __number = 0
@@ -131,9 +125,73 @@ class Crisp():
     
     def __str__(self):
         return f"detail={self.detail}, weight={self.weight}"
-        
 
-data = pandas.read_csv('mini_dummy.csv')
+
+
+""" 
+SIMPLE ADDITIVE WEIGHT METOD
+1. Make Decision matrix
+2. Calculate Normalization Matrix based on Criteria Atribute
+3. Calculate Weight * Normalization Value for each row
+4. Calculate Sum of each row
+5. Rank based on the total value on number 4
+"""
+def generate_saw_result(data, criterias):
+    data_truncate = data.drop(columns=[data.columns[0],data.columns[1]], axis=1)
+    decision_matrix = {}
+    criteria_num=0
+    for column in data_truncate:
+        dm_list = []
+        for value in data_truncate[column].values:
+            dm_list.append(criterias[criteria_num].get_weight_value(value))
+        d_list = {column:dm_list}
+        decision_matrix.update(d_list)
+        criteria_num += 1
+
+    dm = pandas.DataFrame(data=decision_matrix)
+
+    # Get Max and Min Value for each columns that will be used for Normalization Matrix
+    max_value = dm.max()
+    min_value = dm.min()
+
+    # Calculate Normalization Matrix
+    normalization_matrix = {}
+    criteria_num = 0
+    for column in dm:
+        nm_list = []
+        for value in dm[column].values:
+            nm_list.append(criterias[criteria_num].normalize_value_benefit_or_cost(value, min_value.loc[column], max_value[column]))
+        n_list = {column:nm_list}
+        normalization_matrix.update(n_list)
+        criteria_num += 1
+
+    nm = pandas.DataFrame(data=normalization_matrix)
+
+    # Calculate Weight * Normalization Value for each row
+    result_m = nm
+    criteria_num = 0
+    for column in result_m:
+        for index in result_m.index:
+            result_m.loc[index, column] = criterias[criteria_num].calculate_weight_result(result_m.loc[index, column])
+        criteria_num += 1
+
+    # Calculate Sum of each criteria for each rows
+    result_m['Total'] = result_m.sum(axis=1, numeric_only=True)
+
+    # Insert again the ID row and identifier row (name or something else)
+    result_m.insert(0, data.columns.values[0], data[data.columns.values[0]].to_list())
+    result_m.insert(1, data.columns.values[1], data[data.columns.values[1]].to_list())
+
+    # Rank the result based on total value by Descending order
+    result_m['Ranking'] = result_m['Total'].rank(method='max', ascending=False)
+
+    # Sort DataFrame Ascending by Ranking Columns
+    result_m = result_m.sort_values(by=['Ranking'])
+    return result_m
+
+#######################
+# API INPUT SIMULATION
+#######################
 
 # First Criteria
 first_crisp = Crisp(detail=[2, [80]], weight=3)
@@ -185,67 +243,14 @@ fourth_c = Criteria(
     name="Mindset", weight=40, atribute=BENEFIT, crisp_type=0, crisps=crisps
 )
 
+#######################
+
+###############
+# USAGE EXAMPLE
+###############
+data = pandas.read_csv('mini_dummy.csv')
 criterias = []
 criterias.extend([first_c, second_c, third_c, fourth_c])
 
-
-
-""" 
-SIMPLE ADDITIVE WEIGHT METOD
-1. Make Decision matrix
-2. Calculate Normalization Matrix based on Criteria Atribute
-3
-"""
-# Make Decision Matrix
-# Don't include ID and Name
-data_truncate = data.drop(columns=[data.columns[0],data.columns[1]], axis=1)
-decision_matrix = {}
-criteria_num=0
-for column in data_truncate:
-    dm_list = []
-    for value in data_truncate[column].values:
-        dm_list.append(criterias[criteria_num].get_weight_value(value))
-    d_list = {column:dm_list}
-    decision_matrix.update(d_list)
-    criteria_num += 1
-
-dm = pandas.DataFrame(data=decision_matrix)
-
-# Get Max and Min Value for each columns that will be used for Normalization Matrix
-max_value = dm.max()
-min_value = dm.min()
-
-# Calculate Normalization Matrix
-normalization_matrix = {}
-criteria_num = 0
-for column in dm:
-    nm_list = []
-    for value in dm[column].values:
-        nm_list.append(criterias[criteria_num].normalize_value_benefit_or_cost(value, min_value.loc[column], max_value[column]))
-    n_list = {column:nm_list}
-    normalization_matrix.update(n_list)
-    criteria_num += 1
-
-nm = pandas.DataFrame(data=normalization_matrix)
-
-# Calculate Weight * Normalization Value for each row
-result_m = nm
-criteria_num = 0
-for column in result_m:
-    for index in result_m.index:
-        result_m.loc[index, column] = criterias[criteria_num].calculate_weight_result(result_m.loc[index, column])
-    criteria_num += 1
-
-# Calculate Sum of each criteria for each rows
-result_m['Total'] = result_m.sum(axis=1, numeric_only=True)
-
-# Insert again the ID row and identifier row (name or something else)
-result_m.insert(0, data.columns.values[0], data[data.columns.values[0]].to_list())
-result_m.insert(1, data.columns.values[1], data[data.columns.values[1]].to_list())
-
-# Rank the result based on total value by Descending order
-result_m['Ranking'] = result_m['Total'].rank(method='max', ascending=False)
-
-# Sort DataFrame Ascending by Ranking Columns
-result_m = result_m.sort_values(by=['Ranking'])
-result_m.to_csv('out.csv', index=False)
+result = generate_saw_result(data=data, criterias=criterias)
+print(result)
