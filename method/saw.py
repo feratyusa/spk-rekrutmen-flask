@@ -136,7 +136,8 @@ SIMPLE ADDITIVE WEIGHT METOD
 4. Calculate Sum of each row
 5. Rank based on the total value on number 4
 """
-def generate_saw_result(data, criterias):
+def generate_saw_result(data_file, criterias):
+    data = pandas.read_csv(data_file)
     data_truncate = data.drop(columns=[data.columns[0],data.columns[1]], axis=1)
     decision_matrix = {}
     criteria_num=0
@@ -183,7 +184,7 @@ def generate_saw_result(data, criterias):
     result_m.insert(1, data.columns.values[1], data[data.columns.values[1]].to_list())
 
     # Rank the result based on total value by Descending order
-    result_m['Ranking'] = result_m['Total'].rank(method='max', ascending=False)
+    result_m['Ranking'] = result_m['Total'].rank(ascending=False)
 
     # Sort DataFrame Ascending by Ranking Columns
     result_m = result_m.sort_values(by=['Ranking'])
@@ -248,9 +249,9 @@ fourth_c = Criteria(
 ###############
 # USAGE EXAMPLE
 ###############
-data = pandas.read_csv('mini_dummy.csv')
+
+data_file = 'data_dummy.csv'
 criterias = []
 criterias.extend([first_c, second_c, third_c, fourth_c])
-
-result = generate_saw_result(data=data, criterias=criterias)
-print(result)
+result = generate_saw_result(data_file=data_file, criterias=criterias)
+result.to_csv('out.csv')
