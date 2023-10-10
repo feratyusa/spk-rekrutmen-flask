@@ -1,8 +1,8 @@
 import pandas
 from flask import jsonify
 
-BENEFIT = 1
-COST = 0
+BENEFIT = 0
+COST = 1
 
 class Criteria():
     # Criteria Type
@@ -24,6 +24,9 @@ class Criteria():
         self.atribute = atribute
         self.crisp_type = crisp_type
         self.crisps = crisps
+    
+    def __str__(self):
+        return f"name={self.name}, weight={self.weight}, atribute={self.atribute}, crisp_type={self.crisp_type}"
     
     """ 
     CRITERIA PROCESSS FUNCTIONS
@@ -94,6 +97,7 @@ class Criteria():
         weight = 1
         try:
             for c in self.crisps:
+                print('{}-{}'.format(c.detail[0].lower(), rowValue.lower()))
                 if c.detail[0].lower() in rowValue.lower() and weight < c.weight:
                     weight = c.weight
             return weight
@@ -141,15 +145,22 @@ def generate_saw_result(data_file, criterias):
     data_truncate = data.drop(columns=[data.columns[0],data.columns[1]], axis=1)
     decision_matrix = {}
     criteria_num=0
+    print(data_truncate)
+    for c in criterias:
+        print(c)
+        for i in c.crisps:
+            print(i)
     for column in data_truncate:
         dm_list = []
         for value in data_truncate[column].values:
             dm_list.append(criterias[criteria_num].get_weight_value(value))
         d_list = {column:dm_list}
         decision_matrix.update(d_list)
+        print(criterias[criteria_num])
         criteria_num += 1
 
     dm = pandas.DataFrame(data=decision_matrix)
+    print(dm)
 
     # Get Max and Min Value for each columns that will be used for Normalization Matrix
     max_value = dm.max()
@@ -167,6 +178,7 @@ def generate_saw_result(data_file, criterias):
         criteria_num += 1
 
     nm = pandas.DataFrame(data=normalization_matrix)
+    print(nm)
 
     # Calculate Weight * Normalization Value for each row
     result_m = nm
@@ -176,6 +188,7 @@ def generate_saw_result(data_file, criterias):
             result_m.loc[index, column] = criterias[criteria_num].calculate_weight_result(result_m.loc[index, column])
         criteria_num += 1
 
+    print(result_m)
     # Calculate Sum of each criteria for each rows
     result_m['Total'] = result_m.sum(axis=1, numeric_only=True)
 
@@ -250,8 +263,8 @@ fourth_c = Criteria(
 # USAGE EXAMPLE
 ###############
 
-data_file = 'data_dummy.csv'
-criterias = []
-criterias.extend([first_c, second_c, third_c, fourth_c])
-result = generate_saw_result(data_file=data_file, criterias=criterias)
-result.to_csv('out.csv')
+# data_file = 'mini_dummy.csv'
+# criterias = []
+# criterias.extend([first_c, second_c, third_c, fourth_c])
+# result = generate_saw_result(data_file=data_file, criterias=criterias)
+# result.to_csv('out1.csv')
