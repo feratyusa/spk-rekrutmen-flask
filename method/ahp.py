@@ -76,6 +76,7 @@ class AHP_Crisp():
     def __init__(self, name, details, criteria_list):
         self.name = name
         self.detail = details
+        self.priority = 0.00
         self.importance = {}
         # Input all of the criteria names into the importance variable
         for c in criteria_list:
@@ -107,6 +108,7 @@ class AHP_Criteria():
     def __init__(self, name, crisp_type, criteria_list):
         self.name = name
         self.crisp_type = crisp_type
+        self.priority = 0.00
         self.importance = {}
         # Input all of the criteria names into the importance variable
         for c in criteria_list:
@@ -242,7 +244,8 @@ ANALITYCAL HIERARCHY PROCESS METHOD
 9. Rank based on the result of number 8
 """
 
-def generate_ahp_result(data, criterias_list):
+def generate_ahp_result(data_file, criterias_list):
+    data = pandas.read_csv(data_file)
     data_truncate = data.drop(columns=[data.columns[0],data.columns[1]], axis=1)
     result_matrix = {}
     criteria_num=0
@@ -321,6 +324,6 @@ criterias_list[3].update_crisps(fourth_crisp)
 ###############
 # USAGE EXAMPLE
 ###############
-data = pandas.read_csv('mini_dummy.csv')
-result = generate_ahp_result(data=data, criterias_list=criterias_list)
-print(result)
+data_file = 'data_dummy.csv'
+result = generate_ahp_result(data_file=data_file, criterias_list=criterias_list)
+result.to_csv('out_ahp.csv')
