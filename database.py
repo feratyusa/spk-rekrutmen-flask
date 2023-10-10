@@ -76,7 +76,7 @@ class Data(db.Model, SerializerMixin):
 class SAW(db.Model, SerializerMixin):
   __tablename__ = 'saw'
   
-  serialize_only = ('id', 'name', 'description', 'data_id', 'created_at', 'updated_at')
+  serialize_only = ('id', 'name', 'description', 'result_path', 'data_id', 'created_at', 'updated_at')
   serialize_rules = ()
 
   id = db.Column(db.Integer, primary_key=True)
@@ -137,7 +137,7 @@ class SAWCrisp(db.Model, SerializerMixin):
 class AHP(db.Model, SerializerMixin):
   __tablename__ = 'ahp'
 
-  serialize_only = ('id', 'name', 'description', 'created_at', 'updated_at')
+  serialize_only = ('id', 'name', 'description', 'result_path', 'created_at', 'updated_at')
   serialize_rules = ()
 
   id = db.Column(db.Integer, primary_key=True)
