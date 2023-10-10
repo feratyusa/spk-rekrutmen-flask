@@ -274,6 +274,12 @@ def generate_ahp_result(data_file, criterias_list):
     return(rm)
 
 
+
+
+"""
+
+--Uncomment if you want to test it--
+
 #######################
 # API INPUT SIMULATION
 #######################
@@ -294,9 +300,9 @@ criterias_list.extend([first_c, second_c, third_c, fourth_c])
 input_importance(criterias=criterias_list, importance_list=importance_number) # Include it in api input
 calculate_priority(criteria_list=criterias_name, criterias=criterias_list) # This one too and so on
 
-""" 
-CRISP FOR EACH CRITERIA
-"""
+
+# CRISP FOR EACH CRITERIA
+
 crisps_list = []
 
 first_crisp_list = [["First", [2, [80]]], ['Second', [5, [40, 80]]], ['Third', [4, [40]]]]
@@ -309,8 +315,8 @@ importance_number = [2, 3, 5, 7, 9, 3, 5, 7, 9, 3, 5, 7, 3, 5, 3]
 second_crisp = generate_crisp_string(second_crisp_list, importance_number)
 criterias_list[1].update_crisps(second_crisp)
 
-third_crisp_list = ['Foundation', 'Body Painting', 'Corel Draw', 'Mesin Jahit', 'None']
-importance_number = [3, 5, 7, 9, 3, 5, 7, 3, 5, 3]
+third_crisp_list = ['Foundation', 'Body Painting', 'Mascara', 'Coreldraw', 'Kamera', 'Mesin Jahit', 'None']
+importance_number = [2, 3, 5, 6, 7, 9, 2, 4, 5, 6, 8, 3, 5, 6, 8, 2, 3, 5, 2, 4, 3]
 third_crisp = generate_crisp_string(third_crisp_list, importance_number)
 criterias_list[2].update_crisps(third_crisp)
 
@@ -324,6 +330,9 @@ criterias_list[3].update_crisps(fourth_crisp)
 ###############
 # USAGE EXAMPLE
 ###############
-data_file = 'data_dummy.csv'
+data_file = 'mini_dummy.csv'
 result = generate_ahp_result(data_file=data_file, criterias_list=criterias_list)
 result.to_csv('out_ahp.csv')
+
+
+"""
