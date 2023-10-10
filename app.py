@@ -1,4 +1,6 @@
 import os
+import sys
+import pandas
 from dotenv import load_dotenv
 from uuid import uuid4
 
@@ -31,6 +33,7 @@ from database import db
 
 from method.saw import Criteria as SawCriteria
 from method.saw import Crisp as SawCrisp
+from method.saw import generate_saw_result
 
 from error_handler import RaiseError
 
@@ -39,6 +42,7 @@ load_dotenv()
 """ APP CONFIGURATION """
 app = Flask(__name__)
 UPLOAD_FOLDER = '.\\uploads'
+RESULT_FOLDER = '.\\result'
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1000 * 1000 # 16MB
@@ -132,7 +136,7 @@ CREATE, EDIT, LOGIN, LOGOUT, LIST, READ
 @app.get("/users")
 def user_list():
     users = User.query.all()
-    if len(users) is 0:
+    if len(users) == 0:
         return jsonify(msg='No Users'), 200
     users_json = []
     for u in users:
@@ -262,7 +266,7 @@ def data_form():
 @jwt_required()
 def data_list():
     data = Data.query.filter_by(user_id=current_user.id).all()
-    if len(data) is 0:
+    if len(data) == 0:
         return jsonify(msg='Data is Empty'), 200
     data_json = []
     for d in data:
@@ -341,7 +345,7 @@ def saw_create():
 @jwt_required()
 def saw_list():
     saw = SAW.query.join(Data).filter_by(user_id = current_user.id).all()
-    if len(saw) is 0:
+    if len(saw) == 0:
         return jsonify(msg='SAW Empty'), 200
     saw_json = []
     for s in saw:
@@ -388,7 +392,7 @@ def saw_criteria_create(saw_id):
     saw = SAW.query.filter_by(id=saw_id).one_or_404()
     if saw.data.user_id != current_user.id:
         return jsonify(msg='Forbidden Resource'), 403
-    if len(SAWCriteria.query.filter_by(saw_id=saw_id).all()) is not 0:
+    if len(SAWCriteria.query.filter_by(saw_id=saw_id).all()) != 0:
         return jsonify(msg='SAW already has criterias! Update criterias instead'), 400
 
     req = request.json
@@ -417,7 +421,7 @@ def saw_criterias_get(saw_id):
     if saw.data.user_id != current_user.id:
         return jsonify(msg='Forbidden Resource'), 403
     saw_criteria = SAWCriteria.query.filter_by(saw_id=saw_id).all()
-    if len(saw_criteria) is 0:
+    if len(saw_criteria) == 0:
         return jsonify('Criterias not Found', 404)
     saw_json = []
     for s in saw_criteria:  
@@ -434,7 +438,7 @@ def saw_criterias_update(saw_id):
         return jsonify(msg='Forbidden Resource'), 403
     
     saw_criteria = SAWCriteria.query.filter_by(saw_id=saw_id).all()
-    if len(saw_criteria) is 0:
+    if len(saw_criteria) == 0:
         return jsonify(msg='SAW doesn\'t have criterias yet'), 400
 
     req = request.json
@@ -460,7 +464,7 @@ def saw_criteria_delete(saw_id):
         return jsonify(msg='Forbidden Resource'), 403
     
     saw_criteria = SAWCriteria.query.filter_by(saw_id=saw_id).all()
-    if len(saw_criteria) is 0:
+    if len(saw_criteria) == 0:
         return jsonify(msg='SAW doesn\'t have criterias yet'), 400
     
     for index in range(len(saw_criteria)):
@@ -476,22 +480,18 @@ def saw_crisps_create(saw_id):
     if saw.data.user_id != current_user.id:
         return jsonify(msg='Forbidden Resource'), 403
     saw_criteria = SAWCriteria.query.filter_by(saw_id=saw_id).all()
-    if len(saw_criteria) is 0:
+    if len(saw_criteria) == 0:
         return jsonify(msg='SAW Criteria Not Found'), 404
     # Check one of the criteria's crisps
-    if len(SAWCrisp.query.filter_by(saw_criteria_id=saw_criteria[0].id).all()) is not 0:
+    if len(SAWCrisp.query.filter_by(saw_criteria_id=saw_criteria[0].id).all()) != 0:
         return jsonify(msg='SAW Criteria already has crisps! Update crisps instead'), 400
 
     req = request.json
     # Check length of request is correct
-    if len(req) is not len(saw_criteria):
+    if len(req) != len(saw_criteria):
         return jsonify(msg='Different length of Crisps and Criterias'), 400
     
     for index in range(len(saw_criteria)):
-        if saw_criteria[index].crisp_type == 2:
-            req[index]["name"].append("None")
-            req[index]["detail"].append("None")
-            req[index]["weight"].append(1)
         for c_index in range(len(req[index]['name'])):
             crisp = SAWCrisp(
                 name=req[index]['name'][c_index],
@@ -518,7 +518,7 @@ def saw_crisps_get(saw_id):
     if saw.data.user_id != current_user.id:
         return jsonify(msg='Forbidden Resource'), 403
     saw_criteria = SAWCriteria.query.filter_by(saw_id=saw_id).all()
-    if len(saw_criteria) is 0:
+    if len(saw_criteria) == 0:
         return jsonify('Criterias not Found', 404)
     saw_crisps = []
     for c in saw_criteria:
@@ -537,15 +537,11 @@ def saw_crisp_update(saw_id):
         return jsonify(msg='Forbidden Resource'), 403
     saw_criteria = SAWCriteria.query.filter_by(saw_id=saw_id).all()
     # Check one of the criteria's crisps
-    if len(SAWCrisp.query.filter_by(saw_criteria_id=saw_criteria[0].id).all()) is 0:
+    if len(SAWCrisp.query.filter_by(saw_criteria_id=saw_criteria[0].id).all()) == 0:
         return jsonify(msg='SAW Criteria doesn\'t have crisps yet'), 400
     
     req = request.json
     for index in range(len(saw_criteria)):
-        if saw_criteria[index].crisp_type == 2:
-            req[index]["name"].append("None")
-            req[index]["detail"].append("None")
-            req[index]["weight"].append(1)
         saw_crisps = SAWCrisp.query.filter_by(saw_criteria_id=saw_criteria[index].id).all()
         for c_index in range(len(saw_crisps)):
             saw_crisps[c_index].name=req[index]['name'][c_index]
@@ -568,10 +564,10 @@ def saw_crips_delete(saw_id):
     if saw.data.user_id != current_user.id:
         return jsonify(msg='Forbidden Resource'), 403
     saw_criteria = SAWCriteria.query.filter_by(saw_id=saw_id).all()
-    if len(saw_criteria) is 0:
+    if len(saw_criteria) == 0:
         return jsonify(msg='SAW Criteria Not Found'), 404
     # Check one of the criteria's crisps
-    if len(SAWCrisp.query.filter_by(saw_criteria_id=saw_criteria[0].id).all()) is 0:
+    if len(SAWCrisp.query.filter_by(saw_criteria_id=saw_criteria[0].id).all()) == 0:
         return jsonify(msg='SAW Criteria doesn\'t have crisps yet'), 400
     
     for index in range(len(saw_criteria)):
@@ -581,6 +577,79 @@ def saw_crips_delete(saw_id):
             db.session.commit()
     return jsonify(msg='Crisps Deleted'), 200
 
+# SAW METHOD
+@app.get('/saw/<saw_id>/method/create')
+@jwt_required()
+def saw_method(saw_id):
+    """ 
+    Check SAW Criterias and Crisps availabilty
+    """
+    saw = SAW.query.filter_by(id=saw_id).one_or_404()
+    if saw.data.user_id != current_user.id:
+        return jsonify(msg='Forbidden Resource'), 403
+    saw_criteria = SAWCriteria.query.filter_by(saw_id=saw_id).all()
+    if len(saw_criteria) == 0:
+        return jsonify(msg='SAW Criteria Not Found'), 404
+    # Check criteria crisp's
+    for criteria in saw_criteria:
+        if len(SAWCrisp.query.filter_by(saw_criteria_id=criteria.id).all()) == 0:
+            return jsonify(msg="One or more criterias don\'t have crisps"), 400
+    
+    """ 
+    Input init for SAW Method
+    """
+    # Start of criterias init
+    criterias = []
+    for criteria in saw_criteria:
+        crisps = []
+        crisps_query = SAWCrisp.query.filter_by(saw_criteria_id=criteria.id).all()
+        for crisp in crisps_query:
+            name = crisp.name
+            weight = crisp.weight
+            detail = []
+            if criteria.crisp_type == 0:
+                d = crisp.detail.split(",")
+                detail.append(int(d[0]))
+                x = 1
+                comparator = []
+                while x != len(d):
+                    comparator.append(int(d[x]))
+                    x += 1
+                detail.append(comparator)
+            else:
+                detail.append(crisp.detail)
+            c = SawCrisp(detail=detail, weight=weight)
+            crisps.append(c)
+        sc = SawCriteria(
+            name=criteria.name, 
+            weight=criteria.weight, 
+            atribute=criteria.atribute,
+            crisp_type=criteria.crisp_type,
+            crisps=crisps
+            )
+        criterias.append(sc)
+    # End of Criterias init
+    data = saw.data.file_path
+    # for c in criterias:
+    #     print(c)
+    result = generate_saw_result(data_file=data, criterias=criterias)
+    """ 
+    # Save SAW Result as File
+    # """
+    # # Check if folder exists
+    user_saw_result_folder = os.path.join(RESULT_FOLDER, current_user.username)
+    if os.path.exists(user_saw_result_folder) is False:
+        os.mkdir(user_saw_result_folder)
+    user_saw_result_folder = os.path.join(user_saw_result_folder, 'saw')
+    if os.path.exists(user_saw_result_folder) is False:
+        os.mkdir(user_saw_result_folder)
+    file_name = '{}_{}_SAW.csv'.format(saw.name, datetime.now().strftime('%Y-%m-%d_%H\'%M\'%S'))
+    file_path = os.path.join(user_saw_result_folder, file_name)
+    result.to_csv(file_path)
+    # Save file path to database
+    saw.result_path=file_path
+    db.session.commit()
+    return jsonify(saw.to_dict()), 200
 
 """ 
 AHP METHOD ROUTES
