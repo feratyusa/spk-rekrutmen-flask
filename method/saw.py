@@ -203,9 +203,14 @@ def generate_saw_result(data_file, criterias):
     result_m = result_m.sort_values(by=['Ranking'])
     return result_m
 
+
+'''
+--Uncomment if you want to test it--
+
 #######################
 # API INPUT SIMULATION
 #######################
+
 
 # First Criteria
 first_crisp = Crisp(detail=[2, [80]], weight=3)
@@ -263,8 +268,10 @@ fourth_c = Criteria(
 # USAGE EXAMPLE
 ###############
 
-# data_file = 'mini_dummy.csv'
-# criterias = []
-# criterias.extend([first_c, second_c, third_c, fourth_c])
-# result = generate_saw_result(data_file=data_file, criterias=criterias)
-# result.to_csv('out1.csv')
+data_file = 'mini_dummy.csv'
+criterias = []
+criterias.extend([first_c, second_c, third_c, fourth_c])
+result = generate_saw_result(data_file=data_file, criterias=criterias)
+result.to_csv('out1.csv')
+
+'''
