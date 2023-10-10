@@ -128,9 +128,13 @@ def home():
 
 
 """
+
+
 USER ROUTES
 
 CREATE, EDIT, LOGIN, LOGOUT, LIST, READ
+
+
 """
 # USER LIST
 @app.get("/users")
@@ -223,10 +227,14 @@ def modify_token():
 
 
 """
+
+
 DATA ROUTES
 
 DATA CREATE EDIT, DATA LIST
 DATADETAIL CREATE EDIT, DATADETAIL LIST
+
+
 """
 # DATA CREATE
 # Param: Name, File
@@ -312,10 +320,16 @@ def data_delete(data_id):
     return jsonify(msg="Data deleted"), 200
 
 """ 
+
+
 SAW METHOD ROUTES
+
 SAW: CREATE, READ, UPDATE, DELETE
 SAW CRITERIA: CREATE, READ, UPDATE
 SAW CRISP: CREATE, READ, UPDATE
+SAW METHOD RUN
+
+
 """
 # SAW Create
 # Param: Name, Description, Data ID (data_id)
@@ -652,12 +666,16 @@ def saw_method(saw_id):
     return jsonify(saw.to_dict()), 200
 
 """ 
+
 AHP METHOD ROUTES
+
 AHP: CREATE, READ, UPDATE, DELETE
 AHP CRITERIA: CREATE, READ, UPDATE
 AHP CRISP: CREATE, READ, UPDATE
 AHP CRITERIA IMPORTANCE: CREATE, READ, UPDATE
 AHP CRISP IMPORTANCE: CREATE, READ, UPDATE
+
+
 """
 # AHP Create
 # Param: Name, Description, Data ID (data_id)
