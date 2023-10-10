@@ -82,6 +82,7 @@ class SAW(db.Model, SerializerMixin):
   id = db.Column(db.Integer, primary_key=True)
   name = db.Column(db.String, nullable=False)
   description = db.Column(db.String)
+  result_path = db.Column(db.String)
   created_at = db.Column(db.TIMESTAMP, server_default=func.now())
   updated_at = db.Column(db.TIMESTAMP, onupdate=func.current_timestamp())
 
@@ -117,7 +118,7 @@ class SAWCriteria(db.Model, SerializerMixin):
 class SAWCrisp(db.Model, SerializerMixin):
   __tablename__ = 'saw_crisp'
 
-  serialize_only = ('id', 'name', 'detail', 'weight')
+  serialize_only = ('id', 'name', 'detail', 'weight', 'saw_criteria_id')
   serialize_rules = ()
 
   id = db.Column(db.Integer, primary_key=True)
@@ -142,6 +143,7 @@ class AHP(db.Model, SerializerMixin):
   id = db.Column(db.Integer, primary_key=True)
   name = db.Column(db.String, nullable=False)
   description = db.Column(db.String)
+  result_path = db.Column(db.String)
   created_at = db.Column(db.TIMESTAMP, server_default=func.now())
   updated_at = db.Column(db.TIMESTAMP, onupdate=func.current_timestamp())
 
