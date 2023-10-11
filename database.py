@@ -9,6 +9,18 @@ class Base(DeclarativeBase):
   pass
 
 db = SQLAlchemy(model_class=Base)
+
+# Many-Many Table for AHPCriteria and AHPCriteriaImportane
+criteria_importance = db.Table('criteria_importance',
+                               db.Column('criteria_id', db.ForeignKey('ahp_criteria.id')),
+                               db.Column('importance_id', db.ForeignKey('ahp_criteria_importance.id')),
+                              )
+
+crisp_importance = db.Table('crisp_importance',
+                               db.Column('crisp_id', db.ForeignKey('ahp_crisp.id')),
+                               db.Column('importance_id', db.ForeignKey('ahp_crisp_importance.id')),
+                              )
+
 """ 
 Number of Models = 9
 a. User: User of the application
@@ -137,7 +149,7 @@ class SAWCrisp(db.Model, SerializerMixin):
 class AHP(db.Model, SerializerMixin):
   __tablename__ = 'ahp'
 
-  serialize_only = ('id', 'name', 'description', 'result_path', 'created_at', 'updated_at')
+  serialize_only = ('id', 'name', 'description', 'result_path', 'data_id', 'created_at', 'updated_at')
   serialize_rules = ()
 
   id = db.Column(db.Integer, primary_key=True)
@@ -159,18 +171,18 @@ Criteria and Crisp Models for AHP METHOD
 class AHPCriteria(db.Model, SerializerMixin):
   __tablename__ = 'ahp_criteria'
 
-  serialize_only = ('id', 'name', 'crisp_type', 'ahp_crisp.id')
+  serialize_only = ('id', 'name', 'priority', 'crisp_type', 'ahp_id', 'importance', 'ahp_crisp.id')
   serialize_rules = ()
 
   id = db.Column(db.Integer, primary_key=True)
-  name = db.Column(db.Integer, nullable=False)
+  name = db.Column(db.String, nullable=False)
   crisp_type = db.Column(db.Integer, nullable=False) # 0 = Number, 1 = String
   priority = db.Column(db.Float)
   created_at = db.Column(db.TIMESTAMP, server_default=func.now())
   updated_at = db.Column(db.TIMESTAMP, onupdate=func.current_timestamp())
 
   ahp_id = db.Column(db.Integer, db.ForeignKey('ahp.id'))
-  ahp_importance_id = db.Column(db.Integer, db.ForeignKey('ahp_criteria_importance.id'))
+  importance = db.relationship('AHPCriteriaImportance', secondary='criteria_importance', backref='criteria')
   ahp_crisp = db.relationship('AHPCrisp', backref='ahp_criteria')
   
   def __repr__(self):
@@ -179,18 +191,18 @@ class AHPCriteria(db.Model, SerializerMixin):
 class AHPCrisp(db.Model, SerializerMixin):
   __tablename__ = 'ahp_crisp'
 
-  serialize_only = ('id', 'name', 'detail')
+  serialize_only = ('id', 'name', 'detail', 'priority', 'importance')
   serialize_rules = ()
 
   id = db.Column(db.Integer, primary_key=True)
-  name = db.Column(db.Integer, nullable=False)
+  name = db.Column(db.String, nullable=False)
   detail = db.Column(db.String, nullable=False)
   priority = db.Column(db.Float)
   created_at = db.Column(db.TIMESTAMP, server_default=func.now())
   updated_at = db.Column(db.TIMESTAMP, onupdate=func.current_timestamp())
 
   ahp_criteria_id = db.Column(db.Integer, db.ForeignKey('ahp_criteria.id'))
-  ahp_importance_id = db.Column(db.Integer, db.ForeignKey('ahp_crisp_importance.id'))
+  importance = db.relationship('AHPCrispImportance', secondary='crisp_importance', backref='crisp')
 
   def __repr__(self):
     return f'<AHPCrisp "{self.Name}">'
@@ -209,8 +221,6 @@ class AHPCriteriaImportance(db.Model, SerializerMixin):
   created_at = db.Column(db.TIMESTAMP, server_default=func.now())
   updated_at = db.Column(db.TIMESTAMP, onupdate=func.current_timestamp())
 
-  ahp_criteria = db.relationship('AHPCriteria', backref='ahp_criteria_importance')
-
   def __repr__(self):
     return f'<AHPCriteriaImportance Value: "{self.importance}">'
 
@@ -224,8 +234,6 @@ class AHPCrispImportance(db.Model, SerializerMixin):
   importance = db.Column(db.Float, nullable=False)
   created_at = db.Column(db.TIMESTAMP, server_default=func.now())
   updated_at = db.Column(db.TIMESTAMP, onupdate=func.current_timestamp())
-
-  ahp_crisp = db.relationship('AHPCrisp', backref='ahp_crisp_importance')
 
   def __repr__(self):
     return f'<AHPCrispImportance Value: "{self.importance}">'
