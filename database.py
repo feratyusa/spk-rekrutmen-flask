@@ -21,18 +21,6 @@ crisp_importance = db.Table('crisp_importance',
                                db.Column('importance_id', db.ForeignKey('ahp_crisp_importance.id')),
                               )
 
-""" 
-Number of Models = 9
-a. User: User of the application
-b. Data: Data details that will be used
-c. SAWCriteria: Criteria of the data (SAW Method)
-c. SAWCrisp: Crisp / Sub criteria of the data (SAW Method)
-d. AHPCriteria: Criteria of the data (AHP Method)
-e. AHPCrisp: Crisp / Sub criteria of the data (AHP Method)
-f. AHPCriteriaImportance: Importance value of the criteria (AHP Method)
-g. AHPCrispImportance: Importance value of the crisp (AHP Method)
-"""
-
 # This could be expanded to fit the needs of your application. For example,
 # it could track who revoked a JWT, when a token expires, notes for why a
 # JWT was revoked, an endpoint to un-revoked a JWT, etc.
@@ -182,7 +170,7 @@ class AHPCriteria(db.Model, SerializerMixin):
   updated_at = db.Column(db.TIMESTAMP, onupdate=func.current_timestamp())
 
   ahp_id = db.Column(db.Integer, db.ForeignKey('ahp.id'))
-  importance = db.relationship('AHPCriteriaImportance', secondary='criteria_importance', backref='criteria')
+  importance = db.relationship('AHPCriteriaImportance', order_by='AHPCriteriaImportance.id', secondary='criteria_importance', backref='criteria')
   ahp_crisp = db.relationship('AHPCrisp', backref='ahp_criteria')
   
   def __repr__(self):
@@ -191,7 +179,7 @@ class AHPCriteria(db.Model, SerializerMixin):
 class AHPCrisp(db.Model, SerializerMixin):
   __tablename__ = 'ahp_crisp'
 
-  serialize_only = ('id', 'name', 'detail', 'priority', 'importance')
+  serialize_only = ('id', 'name', 'detail', 'priority', 'importance', 'created_at', 'updated_at')
   serialize_rules = ()
 
   id = db.Column(db.Integer, primary_key=True)
@@ -202,7 +190,7 @@ class AHPCrisp(db.Model, SerializerMixin):
   updated_at = db.Column(db.TIMESTAMP, onupdate=func.current_timestamp())
 
   ahp_criteria_id = db.Column(db.Integer, db.ForeignKey('ahp_criteria.id'))
-  importance = db.relationship('AHPCrispImportance', secondary='crisp_importance', backref='crisp')
+  importance = db.relationship('AHPCrispImportance', order_by='AHPCrispImportance.id', secondary='crisp_importance', backref='crisp')
 
   def __repr__(self):
     return f'<AHPCrisp "{self.Name}">'
