@@ -35,6 +35,14 @@ from method.saw import Criteria as SawCriteria
 from method.saw import Crisp as SawCrisp
 from method.saw import generate_saw_result
 
+from method.ahp import AHP_Criteria
+from method.ahp import input_importance
+from method.ahp import calculate_priority
+from method.ahp import AHP_Crisp
+from method.ahp import generate_crisp_string
+from method.ahp import generate_crisp_number
+from method.ahp import generate_ahp_result
+
 from error_handler import RaiseError
 
 load_dotenv()
@@ -116,6 +124,8 @@ def make_unique(string):
 @app.errorhandler(RaiseError)
 def raise_error(e):
     return jsonify(e.to_dict()), e.status_code
+
+
 
 
 """""
@@ -226,6 +236,8 @@ def modify_token():
     return jsonify(msg="JWT Revoked"), 200
 
 
+
+
 """
 
 
@@ -318,6 +330,9 @@ def data_delete(data_id):
     db.session.delete(data)
     db.session.commit()
     return jsonify(msg="Data deleted"), 200
+
+
+
 
 """ 
 
@@ -665,6 +680,9 @@ def saw_method(saw_id):
     db.session.commit()
     return jsonify(saw.to_dict()), 200
 
+
+
+
 """ 
 
 AHP METHOD ROUTES
@@ -687,9 +705,9 @@ def ahp_create():
     data_id = request.form['data_id']
 
     # Check if user allowed to use the data
-    data = Data.query.filter_by(id=data_id).one()
+    data = Data.query.filter_by(id=data_id).one_or_404()
     if data.user_id != current_user.id:
-        return RaiseError('Forbidden Resources', 400)
+        return RaiseError('Forbidden Resources', 403)
     
     ahp = AHP(
         name=name,
@@ -705,6 +723,8 @@ def ahp_create():
 @jwt_required()
 def ahp_list():
     ahp = AHP.query.join(Data).filter_by(user_id = current_user.id).all()
+    if len(ahp) == 0:
+        return jsonify(msg="AHP Empty"), 200
     ahp_json = []
     for a in ahp:
         ahp_json.append(a.to_dict())
@@ -714,43 +734,527 @@ def ahp_list():
 @app.get('/ahp/<ahp_id>')
 @jwt_required()
 def ahp_get(ahp_id):
-    ahp = AHP.query.filter_by(id=ahp_id).one()
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
     if ahp.data.user_id != current_user.id:
         return RaiseError('Forbidden Resource', 403)
     return jsonify(ahp.to_dict()), 200
 
 # AHP Update
-@app.put('/ahp/<ahp>/update')
+@app.put('/ahp/<ahp_id>/update')
 @jwt_required()
 def ahp_update(ahp_id):
-    ahp = SAW.query.filter_by(id=ahp_id).one()
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
     if ahp.data.user_id != current_user.id:
         return RaiseError('Forbidden Resource', 403)
     
     name = request.form['name']
     description = request.form['description']
-    data_id = request.form['data_id']
     ahp.name = name
     ahp.description = description
-    ahp.data_id = data_id
+    db.session.commit()
+
     return jsonify(ahp.to_dict()), 200
 
 # AHP Delete
 @app.delete('/ahp/<ahp_id>/delete')
 @jwt_required()
 def ahp_delete(ahp_id):
-    ahp = AHP.query.filter_by(id=ahp_id).one()
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
     if ahp.data.user_id != current_user.id:
         return RaiseError('Forbidden Resource', 403)
     db.session.delete(ahp)
     db.session.commit()
     return jsonify(msg='AHP Delete Success'), 200
 
-@app.get("/who_am_i")
+# AHP Criterias Create
+@app.post('/ahp/<ahp_id>/criterias/create')
 @jwt_required()
-def who_am_i():
-    # We can now access our sqlalchemy User object via `current_user`.
-    return jsonify(
-        id=current_user.id,
-        username=current_user.username,
-    )
+def ahp_criteria_create(ahp_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
+    if ahp.data.user_id != current_user.id:
+        return jsonify(msg='Forbidden Resource'), 403
+    if len(AHPCriteria.query.filter_by(ahp_id=ahp_id).all()) != 0:
+        return jsonify(msg='AHP already has criterias! Update criterias instead'), 400
+
+    req = request.json
+    for index in range(len(req['name'])):
+        criteria = AHPCriteria(
+            name=req['name'][index],
+            crisp_type=req['crisp_type'][index],
+            ahp_id=ahp_id
+        )    
+        db.session.add(criteria)
+        db.session.commit()
+    
+    ahp = AHPCriteria.query.filter_by(ahp_id=ahp_id).all()
+    ahp_json = []
+    for a in ahp:
+        ahp_json.append(a.to_dict())
+    return jsonify(ahp_json), 200
+
+# AHP Criterias Read
+@app.get('/ahp/<ahp_id>/criterias')
+@jwt_required()
+def ahp_criterias_get(ahp_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
+    if ahp.data.user_id != current_user.id:
+        return jsonify(msg='Forbidden Resource'), 403
+    ahp_criteria = AHPCriteria.query.filter_by(ahp_id=ahp_id).all()
+    if len(ahp_criteria) == 0:
+        return jsonify('Criterias not Found', 404)
+    ahp_json = []
+    for a in ahp_criteria:  
+        ahp_json.append(a.to_dict())
+    return jsonify(ahp_json), 200
+
+# AHP Criterias Update
+# If updated, the CRISPS will be DELETED -- not implemented yet
+@app.put('/ahp/<ahp_id>/criterias/update')
+@jwt_required()
+def ahp_criterias_update(ahp_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
+    if ahp.data.user_id != current_user.id:
+        return jsonify(msg='Forbidden Resource'), 403
+    
+    ahp_criterias = AHPCriteria.query.filter_by(ahp_id=ahp_id).all()
+    if len(ahp_criterias) == 0:
+        return jsonify(msg='AHP doesn\'t have criterias yet'), 400
+
+    req = request.json
+    for index in range(len(ahp_criterias)):
+        ahp_criterias[index].name=req['name'][index]
+        ahp_criterias[index].crisp_type=req['crisp_type'][index]
+    db.session.commit()
+
+    ahp = AHPCriteria.query.filter_by(ahp_id=ahp_id).all()
+    ahp_json = []
+    for a in ahp:
+        ahp_json.append(a.to_dict())
+    return jsonify(ahp_json), 200
+
+# AHP Criterias Delete
+# You can only delete all criteria
+@app.delete('/ahp/<ahp_id>/criterias/delete')
+@jwt_required()
+def ahp_criteria_delete(ahp_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
+    if ahp.data.user_id != current_user.id:
+        return jsonify(msg='Forbidden Resource'), 403
+    
+    ahp_criterias = AHPCriteria.query.filter_by(ahp_id=ahp_id).all()
+    if len(ahp_criterias) == 0:
+        return jsonify(msg='AHP doesn\'t have criterias yet'), 400
+    
+    for index in range(len(ahp_criterias)):
+        db.session.delete(ahp_criterias[index])
+        db.session.commit()
+    return jsonify(msg='Criterias Deleted'), 200
+
+# AHP Criteria Importance Create
+# Param: JSON (float number should be sent as string)
+@app.post('/ahp/<ahp_id>/criterias/importance/create')
+@jwt_required()
+def ahp_criteria_importance_create(ahp_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
+    if ahp.data.user_id != current_user.id:
+        return jsonify(msg='Forbidden Resource'), 403
+    
+    ahp_criterias = AHPCriteria.query.filter_by(ahp_id=ahp_id).order_by(AHPCriteria.id).all()
+    if len(ahp_criterias) == 0:
+        return jsonify(msg='AHP doesn\'t have criterias yet'), 400
+    
+    req = request.json
+    inc = 0
+    for index in range(len(ahp_criterias)-1):
+        for i in range(len(ahp_criterias)-1-index):
+            imp = AHPCriteriaImportance(
+                importance=float(eval(req[inc]))
+            )
+            db.session.add(imp)
+            db.session.commit()
+            ahp_criterias[index].importance.append(imp)
+            ahp_criterias[index+1+i].importance.append(imp)
+            db.session.commit()
+            inc += 1
+    
+    ahp_json = []
+    for a in ahp_criterias:
+        ahp_json.append(a.to_dict())
+    return jsonify(ahp_json), 200
+
+# AHP Criterias Importance Read
+@app.get('/ahp/<ahp_id>/criterias/importance')
+@jwt_required()
+def ahp_criterias_importance_get(ahp_id):
+    ahp = AHPCriteria.query.filter_by(ahp_id=ahp_id).all()
+    ahp_json = []
+    for a in ahp:
+        ahp_json.append(a.to_dict())
+    return jsonify(ahp_json), 200
+
+# AHP Criterias Importance Update 
+@app.put('/ahp/<ahp_id>/criterias/importance/update')
+@jwt_required()
+def ahp_criteria_importance_update(ahp_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
+    if ahp.data.user_id != current_user.id:
+        return jsonify(msg='Forbidden Resource'), 403
+    
+    ahp_criterias = AHPCriteria.query.filter_by(ahp_id=ahp_id).order_by(AHPCriteria.id).all()
+    if len(ahp_criterias) == 0:
+        return jsonify(msg='AHP doesn\'t have criterias yet'), 400
+
+    req = request.json
+    inc = 0
+    counter = 0
+    for index in range(len(ahp_criterias)-1):
+        for i in range(len(ahp_criterias)-1-index):
+            imp_list = AHPCriteria.query.filter_by(id=ahp_criterias[index].id).one()
+            imp_list.importance[i+inc].importance=float(eval(req[counter]))
+            db.session.commit()
+            counter += 1
+        inc+=1
+    
+
+    ahp_json = []
+    for a in ahp_criterias:
+        ahp_json.append(a.to_dict())
+    return jsonify(ahp_json), 200
+
+
+# AHP Criterias Importance Delete -- Not implemented
+
+# AHP Crisps Create
+@app.post('/ahp/<ahp_id>/criterias/crisps/create')
+@jwt_required()
+def ahp_crisps_create(ahp_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None:
+        return jsonify(msg='AHP is not found'), 404
+    if ahp.data.user_id != current_user.id:
+        return jsonify(msg='Forbidden Resource'), 403
+    ahp_criteria = AHPCriteria.query.filter_by(ahp_id=ahp_id).all()
+    if len(ahp_criteria) == 0:
+        return jsonify(msg='AHP Criterias Not Found'), 404
+    # Check one of the criteria's crisps
+    if len(AHPCrisp.query.filter_by(ahp_criteria_id=ahp_criteria[0].id).all()) != 0:
+        return jsonify(msg='AHP Criteria already has crisps! Update crisps instead'), 400
+
+    req = request.json
+    # Check length of request is correct
+    if len(req) != len(ahp_criteria):
+        return jsonify(msg='Different length of Crisps and Criterias'), 400
+    
+    for index in range(len(ahp_criteria)):
+        for c_index in range(len(req[index]['name'])):
+            crisp = AHPCrisp(
+                name=req[index]['name'][c_index],
+                detail=req[index]['detail'][c_index],
+                ahp_criteria_id=ahp_criteria[index].id
+            )
+            db.session.add(crisp)
+            db.session.commit()
+    
+    ahp_crisps = []
+    for c in ahp_criteria:
+        ahp_crisps.extend(AHPCrisp.query.filter_by(ahp_criteria_id=c.id).all())
+    crisps_json = []
+    for s in ahp_crisps:  
+        crisps_json.append(s.to_dict())
+    return jsonify(crisps_json), 200
+
+# AHP Crisps Read
+@app.get('/ahp/<ahp_id>/criterias/crisps')
+@jwt_required()
+def ahp_crisps_get(ahp_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None:
+        return jsonify(msg='AHP is not found'), 404
+    if ahp.data.user_id != current_user.id:
+        return jsonify(msg='Forbidden Resource'), 403
+    ahp_criteria = AHPCriteria.query.filter_by(ahp_id=ahp_id).order_by(AHPCriteria.id).all()
+    if len(ahp_criteria) == 0:
+        return jsonify(msg='AHP Criterias Not Found'), 404
+    ahp_crisps = []
+    for c in ahp_criteria:
+        ahp_crisps.extend(AHPCrisp.query.filter_by(ahp_criteria_id=c.id).order_by(AHPCrisp.id).all())
+    if len(ahp_crisps) == 0:
+        return jsonify(msg="Crisps Empty"), 200
+    crisps_json = []
+    for s in ahp_crisps:  
+        crisps_json.append(s.to_dict())
+    return jsonify(crisps_json), 200
+
+# AHP Crisps Update
+@app.put('/ahp/<ahp_id>/criterias/crisps/update')
+@jwt_required()
+def ahp_crisps_update(ahp_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None:
+        return jsonify(msg='AHP is not found'), 404
+    if ahp.data.user_id != current_user.id:
+        return jsonify(msg='Forbidden Resource'), 403
+    ahp_criteria = AHPCriteria.query.filter_by(ahp_id=ahp_id).order_by(AHPCriteria.id).all()
+    if len(ahp_criteria) == 0:
+        return jsonify(msg='AHP Criterias Not Found'), 404
+    # Check one of the criteria's crisps
+    if len(AHPCrisp.query.filter_by(ahp_criteria_id=ahp_criteria[0].id).all()) == 0:
+        return jsonify(msg='AHP Criteria doesn\'t have crisps'), 400
+    
+    req = request.json
+    # Check length of request is correct
+    if len(req) != len(ahp_criteria):
+        return jsonify(msg='Different length of Crisps and Criterias'), 400
+    
+    for index in range(len(ahp_criteria)):
+        ahp_crisps = AHPCrisp.query.filter_by(ahp_criteria_id=ahp_criteria[index].id).order_by(AHPCrisp.id).all()
+        for c_index in range(len(req[index]['name'])):
+            ahp_crisps[c_index].name=req[index]['name'][c_index]
+            ahp_crisps[c_index].detail=req[index]['detail'][c_index]
+            db.session.commit()
+    
+    ahp_crisps = []
+    for c in ahp_criteria:
+        ahp_crisps.extend(AHPCrisp.query.filter_by(ahp_criteria_id=c.id).order_by(AHPCrisp.id).all())
+    crisps_json = []
+    for s in ahp_crisps:  
+        crisps_json.append(s.to_dict())
+    return jsonify(crisps_json), 200
+
+# AHP Crisps Delete
+@app.delete('/ahp/<ahp_id>/criterias/crisps/delete')
+@jwt_required()
+def ahp_crisps_delete(ahp_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None:
+        return jsonify(msg='AHP is not found'), 404
+    if ahp.data.user_id != current_user.id:
+        return jsonify(msg='Forbidden Resource'), 403
+    ahp_criteria = AHPCriteria.query.filter_by(ahp_id=ahp_id).order_by(AHPCriteria.id).all()
+    if len(ahp_criteria) == 0:
+        return jsonify(msg='AHP Criterias Not Found'), 404
+    # Check one of the criteria's crisps
+    if len(AHPCrisp.query.filter_by(ahp_criteria_id=ahp_criteria[0].id).all()) == 0:
+        return jsonify(msg='AHP Criteria doesn\'t have crisps'), 400
+    
+    for index in range(len(ahp_criteria)):
+        crisps = AHPCrisp.query.filter_by(ahp_criteria_id=ahp_criteria[index].id).all()
+        for c in crisps:
+            db.session.delete(c)
+            db.session.commit()
+    return jsonify(msg='Crisps Deleted'), 200
+
+# AHP Crisps Importance Create
+@app.post('/ahp/<ahp_id>/criterias/crisps/importance/create')
+@jwt_required()
+def ahp_crisps_importance_create(ahp_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None:
+        return jsonify(msg='AHP is not found'), 404
+    if ahp.data.user_id != current_user.id:
+        return jsonify(msg='Forbidden Resource'), 403
+    ahp_criterias = AHPCriteria.query.filter_by(ahp_id=ahp_id).order_by(AHPCriteria.id).all()
+    if len(ahp_criterias) == 0:
+        return jsonify(msg='AHP Criterias Not Found'), 404
+    # Check one of the criteria's crisps
+    if len(AHPCrisp.query.filter_by(ahp_criteria_id=ahp_criterias[0].id).all()) == 0:
+        return jsonify(msg='AHP Criteria doesn\'t have crisps yet'), 400
+    # Check if crisps already has importance
+    ahp_crisps = AHPCrisp.query.filter_by(ahp_criteria_id=ahp_criterias[0].id).all()
+    if len(AHPCrispImportance.query.join(AHPCrispImportance.crisp).filter_by(id=ahp_crisps[0].id).all()) != 0:
+        return jsonify(msg="AHP Crisps already have importance value! Update it instead"), 400
+
+    req = request.json
+    for index in range (len(ahp_criterias)):
+        inc = 0
+        crisps = AHPCrisp.query.filter_by(ahp_criteria_id=ahp_criterias[index].id).order_by(AHPCrisp.id).all()
+        for i in range(len(crisps)-1):
+            for j in range(len(crisps)-1-i):
+                imp = AHPCrispImportance(
+                    importance=float(eval(req[index][inc]))
+                )
+                db.session.add(imp)
+                db.session.commit()
+                crisps[i].importance.append(imp)
+                crisps[i+1+j].importance.append(imp)
+                db.session.commit()
+                inc += 1
+    
+    ahp_crisps = []
+    for c in ahp_criterias:
+        ahp_crisps.extend(AHPCrisp.query.filter_by(ahp_criteria_id=c.id).order_by(AHPCrisp.id).all())
+    if len(ahp_crisps) == 0:
+        return jsonify(msg="Crisps Empty"), 200
+    crisps_json = []
+    for s in ahp_crisps:  
+        crisps_json.append(s.to_dict())
+    return jsonify(crisps_json), 200
+
+# AHP Crisps Importance Read
+@app.get('/ahp/<ahp_id>/criterias/crisps/importance')
+@jwt_required()
+def ahp_crisps_importance_get(ahp_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None:
+        return jsonify(msg='AHP is not found'), 404
+    if ahp.data.user_id != current_user.id:
+        return jsonify(msg='Forbidden Resource'), 403
+    ahp_criterias = AHPCriteria.query.filter_by(ahp_id=ahp_id).order_by(AHPCriteria.id).all()
+    if len(ahp_criterias) == 0:
+        return jsonify(msg='AHP Criterias Not Found'), 404
+    # Check one of the criteria's crisps
+    if len(AHPCrisp.query.filter_by(ahp_criteria_id=ahp_criterias[0].id).all()) == 0:
+        return jsonify(msg='AHP Criteria doesn\'t have crisps yet'), 400
+
+    ahp_crisps = []
+    for c in ahp_criterias:
+        ahp_crisps.extend(AHPCrisp.query.filter_by(ahp_criteria_id=c.id).order_by(AHPCrisp.id).all())
+    if len(ahp_crisps) == 0:
+        return jsonify(msg="Crisps Empty"), 200
+    crisps_json = []
+    for s in ahp_crisps:  
+        crisps_json.append(s.to_dict())
+    return jsonify(crisps_json), 200
+
+# AHP Crisps Importance Update
+@app.put('/ahp/<ahp_id>/criterias/crisps/importance/update')
+@jwt_required()
+def ahp_crisps_importance_update(ahp_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None:
+        return jsonify(msg='AHP is not found'), 404
+    if ahp.data.user_id != current_user.id:
+        return jsonify(msg='Forbidden Resource'), 403
+    ahp_criterias = AHPCriteria.query.filter_by(ahp_id=ahp_id).order_by(AHPCriteria.id).all()
+    if len(ahp_criterias) == 0:
+        return jsonify(msg='AHP Criterias Not Found'), 404
+    # Check one of the criteria's crisps
+    if len(AHPCrisp.query.filter_by(ahp_criteria_id=ahp_criterias[0].id).all()) == 0:
+        return jsonify(msg='AHP Criteria doesn\'t have crisps yet'), 400
+    # Check if crisps already has importance
+    ahp_crisps = AHPCrisp.query.filter_by(ahp_criteria_id=ahp_criterias[0].id).all()
+    if len(AHPCrispImportance.query.join(AHPCrispImportance.crisp).filter_by(id=ahp_crisps[0].id).all()) == 0:
+        return jsonify(msg="AHP Crisps is empty!"), 400
+    
+    req = request.json
+    for index in range (len(ahp_criterias)):
+        counter = 0
+        inc = 0
+        crisps = AHPCrisp.query.filter_by(ahp_criteria_id=ahp_criterias[index].id).order_by(AHPCrisp.id).all()
+        for i in range(len(crisps)-1):
+            for j in range(len(crisps)-1-i):
+                imp_list = AHPCrisp.query.filter_by(id=crisps[i].id).one()
+                imp_list.importance[j+inc].importance=float(eval(req[index][counter]))
+                db.session.commit()
+                counter += 1
+            inc+=1
+    
+    ahp_crisps = []
+    for c in ahp_criterias:
+        ahp_crisps.extend(AHPCrisp.query.filter_by(ahp_criteria_id=c.id).order_by(AHPCrisp.id).all())
+    if len(ahp_crisps) == 0:
+        return jsonify(msg="Crisps Empty"), 200
+    crisps_json = []
+    for s in ahp_crisps:  
+        crisps_json.append(s.to_dict())
+    return jsonify(crisps_json), 200
+
+# AHP METHOD (BIG CHANGE)
+@app.get('/ahp/<ahp_id>/method/create')
+@jwt_required()
+def ahp_method_run(ahp_id):
+    """Check Availabilty if method can be run or not"""
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None:
+        return jsonify(msg='AHP is not found'), 404
+    if ahp.data.user_id != current_user.id:
+        return jsonify(msg='Forbidden Resource'), 403
+    ahp_criterias = AHPCriteria.query.filter_by(ahp_id=ahp_id).order_by(AHPCriteria.id).all()
+    if len(ahp_criterias) == 0:
+        return jsonify(msg='AHP Criterias Not Found'), 404
+    # Check one of the criteria's crisps
+    if len(AHPCrisp.query.filter_by(ahp_criteria_id=ahp_criterias[0].id).all()) == 0:
+        return jsonify(msg='AHP Criteria doesn\'t have crisps yet'), 400
+    
+    """ 
+    Init AHP Criterias
+    """
+    # Get all criterias list name
+    criterias_list = []
+    for c in ahp_criterias:
+        criterias_list.append(c.name)
+    # AHP Criterias
+    criterias = []
+    for c in ahp_criterias:
+        crit = AHP_Criteria(name=c.name, crisp_type=c.crisp_type, criteria_list=criterias_list)
+        criterias.append(crit)
+    # Get AHP Criterias Importance
+    importance_list = []
+    inc = 0
+    for index in range(len(ahp_criterias)-1):
+        for i in range(len(ahp_criterias)-1-index):
+            imp_list = AHPCriteria.query.filter_by(id=ahp_criterias[index].id).one()
+            importance_list.append(imp_list.importance[i+inc].importance)
+        inc+=1
+    
+    input_importance(criterias=criterias, importance_list=importance_list)
+    criterias = calculate_priority(criteria_list=criterias_list, criterias=criterias)
+    if criterias is False:
+        return jsonify(msg="Consistency Ratio is more than 0.1"), 412
+    
+    for index in range(len(ahp_criterias)):
+        ahp_crisps = AHPCrisp.query.filter_by(ahp_criteria_id=ahp_criterias[index].id).order_by(AHPCrisp.id).all()
+        crisps_list = []
+        importance_number = []
+        inc = 0
+        for c in ahp_crisps:
+            if ahp_criterias[index].crisp_type == 0:
+                crisp = [c.name]
+                detail = []
+                d = c.detail.split(",")
+                detail.append(int(d[0]))
+                x = 1
+                comparator = []
+                while x != len(d):
+                    comparator.append(int(d[x]))
+                    x += 1
+                detail.append(comparator)
+                crisp.append(detail)
+                crisps_list.append(crisp)
+            else:
+                crisps_list.append(c.detail)
+        for i in range(len(ahp_crisps)-1):
+            for j in range(len(ahp_crisps)-1-i):
+                imp_list = AHPCrisp.query.filter_by(id=ahp_crisps[i].id).one()
+                importance_number.append(imp_list.importance[j+inc].importance)
+            inc+=1
+        crisps = []
+        if ahp_criterias[index].crisp_type == 0:
+            print(crisps_list)
+            crisps = generate_crisp_number(crisp_list=crisps_list, importance_list=importance_number)
+        else:
+            crisps = generate_crisp_string(crisp_list=crisps_list, importance_list=importance_number)
+        criterias[index].update_crisps(crisps)
+    
+    for c in criterias[0].crisps:
+        print(c)
+    
+    data_file = ahp.data.file_path
+    result = generate_ahp_result(data_file=data_file, criterias_list=criterias)
+    """ 
+    # Save AHP Result as File
+    # """
+    # # Check if folder exists
+    user_ahp_result_folder = os.path.join(RESULT_FOLDER, current_user.username)
+    if os.path.exists(user_ahp_result_folder) is False:
+        os.mkdir(user_ahp_result_folder)
+    user_ahp_result_folder = os.path.join(user_ahp_result_folder, 'ahp')
+    if os.path.exists(user_ahp_result_folder) is False:
+        os.mkdir(user_ahp_result_folder)
+    file_name = '{}_{}_AHP.csv'.format(ahp.name, datetime.now().strftime('%Y-%m-%d_%H\'%M\'%S'))
+    file_path = os.path.join(user_ahp_result_folder, file_name)
+    result.to_csv(file_path)
+    # Save file path to database
+    ahp.result_path=file_path
+    db.session.commit()
+    return jsonify('Success'), 200
