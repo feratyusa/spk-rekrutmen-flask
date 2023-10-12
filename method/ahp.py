@@ -107,7 +107,7 @@ class AHP_Criteria():
 
     def __init__(self, name, crisp_type, criteria_list):
         self.name = name
-        self.crisp_type = crisp_type
+        self.crisp_type = crisp_type # value is 0 or 1
         self.priority = 0.00
         self.importance = {}
         # Input all of the criteria names into the importance variable
