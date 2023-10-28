@@ -1159,6 +1159,208 @@ def ahp_crisps_importance_update(ahp_id):
         crisps_json.append(s.to_dict())
     return jsonify(crisps_json), 200
 
+# AHP Crisp (Individual) Create
+@app.post('/ahp/<ahp_id>/criterias/<criteria_id>/crisps/create')
+@jwt_required()
+def ahp_crisp_create(ahp_id, criteria_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None:
+        return jsonify(msg='AHP is not found'), 404
+    ahp_criteria = AHPCriteria.query.filter_by(id=criteria_id, ahp_id=ahp_id).one_or_none()
+    if ahp_criteria == None:
+        return jsonify(msg='AHP Criteria Not Found'), 404
+    if len(ahp_criteria.ahp_crisp) != 0:
+        return jsonify(msg="AHP Crisps already been made, updated it instead!"), 400
+
+    req = request.json
+    
+    for index in range(len(req['name'])):
+        crisp = AHPCrisp(
+            name=req['name'][index],
+            detail=req['detail'][index],
+            ahp_criteria_id=ahp_criteria.id
+        )
+        db.session.add(crisp)
+        db.session.commit()
+    
+    ahp_crisps = AHPCrisp.query.filter_by(ahp_criteria_id=ahp_criteria.id).all()
+    if len(ahp_crisps) == 0:
+        return jsonify(msg='AHP Crisps input failed something is wrong'), 400
+    ahp_crisps = [c.to_dict() for c in ahp_crisps]
+    return jsonify(ahp_crisps), 200
+
+# AHP Crisp (Individual) Read
+@app.get('/ahp/<ahp_id>/criterias/<criteria_id>/crisps')
+@jwt_required()
+def ahp_crisp_read(ahp_id, criteria_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None:
+        return jsonify(msg='AHP is not found'), 404
+    ahp_criteria = AHPCriteria.query.filter_by(id=criteria_id, ahp_id=ahp_id).one_or_none()
+    if ahp_criteria == None:
+        return jsonify(msg='AHP Criteria Not Found'), 404
+    ahp_crisps = [c.to_dict() for c in ahp_criteria.ahp_crisp]
+    return jsonify(msg="Crisps is Empty" if len(ahp_crisps) == 0 else ahp_crisps), 200
+
+# AHP Crisps (Individual) Update
+@app.put('/ahp/<ahp_id>/criterias/<criteria_id>/crisps/update')
+@jwt_required()
+def ahp_crisp_update(ahp_id, criteria_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None:
+        return jsonify(msg='AHP is not found'), 404
+    ahp_criteria = AHPCriteria.query.filter_by(id=criteria_id, ahp_id=ahp_id).one_or_none()
+    if ahp_criteria == None:
+        return jsonify(msg='AHP Criteria Not Found'), 404
+    if len(ahp_criteria.ahp_crisp) == 0:
+        return jsonify(msg="AHP Crisps is Empty, create it first!"), 400
+
+    req = request.json
+    ahp_crisps = AHPCrisp.query.filter_by(ahp_criteria_id=criteria_id).order_by(AHPCrisp.id).all()
+    for index in range(len(req['name'])):
+        ahp_crisps[index].name = req['name'][index]
+        ahp_crisps[index].detail = req['detail'][index]
+        db.session.commit()
+    
+    ahp_crisps = AHPCrisp.query.filter_by(ahp_criteria_id=criteria_id).order_by(AHPCrisp.id).all()
+    ahp_crisps = [c.to_dict() for c in ahp_crisps]
+    return jsonify(ahp_crisps), 200
+
+# AHP Crisp (Individual) Delete
+@app.delete('/ahp/<ahp_id>/criterias/<criteria_id>/crisps/delete')
+@jwt_required()
+def ahp_crisp_delete(ahp_id, criteria_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None:
+        return jsonify(msg='AHP is not found'), 404
+    ahp_criteria = AHPCriteria.query.filter_by(id=criteria_id, ahp_id=ahp_id).one_or_none()
+    if ahp_criteria == None:
+        return jsonify(msg='AHP Criteria Not Found'), 404
+    ahp_crisp = ahp_criteria.ahp_crisp
+    if len(ahp_crisp) == 0:
+        return jsonify(msg="AHP Crisps is Empty, create it first!"), 400
+    
+    for index in range(len(ahp_crisp)):
+        db.session.delete(ahp_crisp[index])
+    db.session.commit()
+
+    return jsonify(msg='AHP Crisp Delete Success'), 200
+
+# AHP Crisp (Individual) Importance Create
+@app.post('/ahp/<ahp_id>/criterias/<criteria_id>/crisps/importance/create')
+@jwt_required()
+def ahp_crisp_importance_create(ahp_id, criteria_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None:
+        return jsonify(msg='AHP is not found'), 404
+    ahp_criteria = AHPCriteria.query.filter_by(id=criteria_id, ahp_id=ahp_id).one_or_none()
+    if ahp_criteria == None:
+        return jsonify(msg='AHP Criteria Not Found'), 404
+    ahp_crisp = ahp_criteria.ahp_crisp
+    if len(ahp_crisp) == 0:
+        return jsonify(msg="AHP Crisps is Empty, create it first!"), 400
+    for crisp in ahp_crisp:
+        if len(crisp.importance) != 0:
+            return jsonify(msg='AHP Crisp Importance already Exists, update it instead!', crisp_id=crisp.id), 400
+    
+    req = request.json
+    inc = 0
+    for index in range(len(ahp_crisp)-1):
+        for i in range(len(ahp_crisp)-1-index):
+            imp = AHPCrispImportance(
+                importance=float(eval(req[inc]))
+            )
+            db.session.add(imp)
+            db.session.commit()
+            ahp_crisp[index].importance.append(imp)
+            ahp_crisp[index+1+i].importance.append(imp)
+            db.session.commit()
+            inc += 1
+
+    ahp_crisp = [c.to_dict() for c in ahp_crisp]
+    return jsonify(ahp_crisp), 200
+
+# AHP Crisp (Individual) Importance Read
+@app.get('/ahp/<ahp_id>/criterias/<criteria_id>/crisps/importance')
+@jwt_required()
+def ahp_crisp_importance_read(ahp_id, criteria_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None:
+        return jsonify(msg='AHP is not found'), 404
+    ahp_criteria = AHPCriteria.query.filter_by(id=criteria_id, ahp_id=ahp_id).one_or_none()
+    if ahp_criteria == None:
+        return jsonify(msg='AHP Criteria Not Found'), 404
+    ahp_crisp = ahp_criteria.ahp_crisp
+    if len(ahp_crisp) == 0:
+        return jsonify(msg="AHP Crisps is Empty, create it first!"), 400
+    importance = []
+    counter = 0
+    inc = 0
+    for index in range(len(ahp_crisp)-1):
+        for i in range(len(ahp_crisp)-1-index):
+            importance.append(ahp_crisp[index].importance[i+inc].importance)
+            db.session.commit()
+            counter += 1
+        inc+=1
+    return jsonify(importances=importance), 200
+
+# AHP Crisp (Individual) Importance Update
+@app.put('/ahp/<ahp_id>/criterias/<criteria_id>/crisps/importance/update')
+@jwt_required()
+def ahp_crisp_importance_update(ahp_id, criteria_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None:
+        return jsonify(msg='AHP is not found'), 404
+    ahp_criteria = AHPCriteria.query.filter_by(id=criteria_id, ahp_id=ahp_id).one_or_none()
+    if ahp_criteria == None:
+        return jsonify(msg='AHP Criteria Not Found'), 404
+    ahp_crisp = ahp_criteria.ahp_crisp
+    if len(ahp_crisp) == 0:
+        return jsonify(msg="AHP Crisps is Empty, create it first!"), 400
+    for crisp in ahp_crisp:
+        if len(crisp.importance) == 0:
+            return jsonify(msg='AHP Crisp Importance is Empty, create it first', crisp_id=crisp.id), 400
+    
+    req = request.json
+    counter = 0
+    inc = 0
+    for index in range(len(ahp_crisp)-1):
+        for i in range(len(ahp_crisp)-1-index):
+            ahp_crisp[index].importance[i+inc].importance=float(eval(req[counter]))
+            db.session.commit()
+            counter += 1
+        inc+=1
+    ahp_crisp = [c.to_dict() for c in ahp_crisp]
+    return jsonify(ahp_crisp), 200
+
+# AHP Crisp (Individual) Importance Delete
+@app.delete('/ahp/<ahp_id>/criterias/<criteria_id>/crisps/importance/delete')
+@jwt_required()
+def ahp_crisp_importance_delete(ahp_id, criteria_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None:
+        return jsonify(msg='AHP is not found'), 404
+    ahp_criteria = AHPCriteria.query.filter_by(id=criteria_id, ahp_id=ahp_id).one_or_none()
+    if ahp_criteria == None:
+        return jsonify(msg='AHP Criteria Not Found'), 404
+    ahp_crisp = ahp_criteria.ahp_crisp
+    if len(ahp_crisp) == 0:
+        return jsonify(msg="AHP Crisps is Empty, create it first!"), 400
+    for crisp in ahp_crisp:
+        if len(crisp.importance) == 0:
+            return jsonify(msg='AHP Crisp Importance is Empty, create it first', crisp_id=crisp.id), 400
+        
+    counter = 0
+    inc = 0
+    for index in range(len(ahp_crisp)-1):
+        for i in range(len(ahp_crisp)-1-index):
+            db.session.delete(ahp_crisp[index].importance[i+inc])
+            counter += 1
+        inc+=1
+    db.session.commit()
+    ahp_crisp = [c.to_dict() for c in ahp_crisp]
+    return jsonify(ahp_crisp), 200
+
 # AHP METHOD (BIG CHANGE)
 @app.get('/ahp/<ahp_id>/method/create')
 @jwt_required()
