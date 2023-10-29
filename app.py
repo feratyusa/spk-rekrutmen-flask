@@ -1,6 +1,4 @@
 import os
-import sys
-import pandas
 from dotenv import load_dotenv
 from uuid import uuid4
 
@@ -127,7 +125,6 @@ def raise_error(e):
 
 
 
-
 """""
 ROUTES
 """""
@@ -147,7 +144,7 @@ CREATE, EDIT, LOGIN, LOGOUT, LIST, READ
 
 """
 # USER LIST
-@app.get("/users")
+@app.get('/api/users')
 def user_list():
     users = User.query.all()
     if len(users) == 0:
@@ -159,7 +156,7 @@ def user_list():
 
 # USER CREATE
 # Parameter: username, password, email
-@app.post("/user/create")
+@app.post('/api/user/create')
 def user_create():
     user = User(
         username=request.form["username"],
@@ -171,7 +168,7 @@ def user_create():
     return jsonify(user.to_dict()), 200
 
 # USER READ
-@app.get("/user/details")
+@app.get('/api/user/details')
 @jwt_required()
 def user_detail():
     user = User.query.filter_by(id=current_user.id).one()
@@ -179,7 +176,7 @@ def user_detail():
 
 # USER EDIT
 # Param: username, email
-@app.put("/user/update")
+@app.put('/api/user/update')
 @jwt_required()
 def user_edit():
     user = User.query.filter_by(id=current_user.id).one()
@@ -189,7 +186,7 @@ def user_edit():
 
 # USER CHANGE PASSWORD
 # Param: password
-@app.put("/user/change-password")
+@app.put("/api/user/change-password")
 @jwt_required()
 def user_change_password():
     user = User.query.filter_by(id=current_user.id).one()
@@ -199,7 +196,7 @@ def user_change_password():
     return jsonify(msg="Change password success"), 200
 
 # USER DELETE
-@app.delete("/user/delete")
+@app.delete("/api/user/delete")
 @jwt_required()
 def user_delete():
     user = User.query.filter_by(username=current_user.username).one()
@@ -209,7 +206,7 @@ def user_delete():
 
 # USER LOGIN
 # Param: username, password
-@app.post("/login")
+@app.post('/api/login')
 def login_post():
     user = User.query.filter(User.username == request.form["username"]).first()
     # Username Not Found
@@ -226,7 +223,7 @@ def login_post():
 # USER LOGOUT
 # Endpoint for revoking the current users access token. Saved the unique
 # identifier (jti) for the JWT into our database.
-@app.delete("/logout")
+@app.delete('/api/logout')
 @jwt_required()
 def modify_token():
     jti = get_jwt()["jti"]
@@ -250,7 +247,7 @@ DATADETAIL CREATE EDIT, DATADETAIL LIST
 """
 # DATA CREATE
 # Param: Name, File
-@app.post("/data/create")
+@app.post('/api/data/create')
 @jwt_required()
 def data_form():
     # File handler
@@ -282,7 +279,7 @@ def data_form():
     return jsonify(data.to_dict()), 200
 
 # DATA LIST READ
-@app.get("/data")
+@app.get("/api/data")
 @jwt_required()
 def data_list():
     data = Data.query.filter_by(user_id=current_user.id).all()
@@ -293,9 +290,18 @@ def data_list():
         data_json.append(d.to_dict())
     return jsonify(data_json), 200
 
+# DATA READ
+@app.get("/api/data/<data_id>")
+@jwt_required()
+def data_read(data_id):
+    data = Data.query.filter_by(id=data_id, user_id=current_user.id).one_or_none()
+    if data is None:
+        raise RaiseError("Data is not Found", 404)
+    return jsonify(data.to_dict()), 200
+
 # DATA UPDATE
 # Param: name, file_path
-@app.put("/data/<data_id>/update")
+@app.put("/api/data/<data_id>/update")
 @jwt_required()
 def data_update(data_id):
     data = db.get_or_404(Data, data_id)
@@ -321,12 +327,12 @@ def data_update(data_id):
     return jsonify(data.to_dict()), 200
 
 # DATA DELETE
-@app.delete("/data/<data_id>/delete")
-@jwt_required
+@app.delete("/api/data/<data_id>/delete")
+@jwt_required()
 def data_delete(data_id):
-    data = db.get_or_404(Data, data_id)
-    if data.id != current_user.id:
-        raise RaiseError("Forbidden Resource", 403)
+    data = Data.query.filter_by(id=data_id, user_id=current_user.id).one_or_none()
+    if data is None:
+        raise RaiseError("Data is not Found", 404)
     db.session.delete(data)
     db.session.commit()
     return jsonify(msg="Data deleted"), 200
@@ -348,7 +354,7 @@ SAW METHOD RUN
 """
 # SAW Create
 # Param: Name, Description, Data ID (data_id)
-@app.post('/saw/create')
+@app.post('/api/saw/create')
 @jwt_required()
 def saw_create():
     name = request.form['name']
@@ -370,29 +376,31 @@ def saw_create():
     return jsonify(saw.to_dict()), 200
 
 # SAW List Read
-@app.get('/saw')
+@app.get('/api/saw')
 @jwt_required()
 def saw_list():
-    saw = SAW.query.join(Data).filter_by(user_id = current_user.id).all()
+    saw = SAW.query.join(Data).filter_by(user_id = current_user.id).order_by(SAW.id).all()
     if len(saw) == 0:
         return jsonify(msg='SAW Empty'), 200
-    saw_json = []
-    for s in saw:
-        saw_json.append(s.to_dict())
-    return jsonify(saw_json), 200
+    saw = [s.to_dict() for s in saw]
+    return jsonify(saw), 200
 
 # SAW Read
-@app.get('/saw/<saw_id>')
+@app.get('/api/saw/<saw_id>')
 @jwt_required()
 def saw_get(saw_id):
-    saw = SAW.query.filter_by(id=saw_id).one_or_404()
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
+    if saw is None or saw.data.user_id != current_user.id:
+        raise RaiseError("SAW is not Found", 404)
     return jsonify(saw.to_dict()), 200
 
 # SAW Update
-@app.put('/saw/<saw_id>/update')
+@app.put('/api/saw/<saw_id>/update')
 @jwt_required()
 def saw_update(saw_id):
-    saw = SAW.query.filter_by(id=saw_id).one_or_404()
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
+    if saw.data.user_id != current_user.id:
+        raise RaiseError("Data is not Found", 404)
     
     name = request.form['name']
     description = request.form['description']
@@ -400,29 +408,31 @@ def saw_update(saw_id):
     saw.name = name
     saw.description = description
     saw.data_id = data_id
+    db.session.commit()
+
     return jsonify(saw.to_dict()), 200
 
 # SAW Delete
-@app.delete('/saw/<saw_id>/delete')
+@app.delete('/api/saw/<saw_id>/delete')
 @jwt_required()
 def saw_delete(saw_id):
-    saw = SAW.query.filter_by(id=saw_id).one_or_404()
-    if saw.data.user_id != current_user.id:
-        return RaiseError('Forbidden Resource', 403)
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
+    if saw is None or saw.data.user_id != current_user.id:
+        raise RaiseError("SAW is not Found", 404)
     db.session.delete(saw)
     db.session.commit()
     return jsonify(msg='SAW Delete Success'), 200
 
 # SAW CRITERIA Create
 # Param: List of SAWCriteria in JSON
-@app.post('/saw/<saw_id>/criterias/create')
+@app.post('/api/saw/<saw_id>/criterias/create')
 @jwt_required()
 def saw_criteria_create(saw_id):
-    saw = SAW.query.filter_by(id=saw_id).one_or_404()
-    if saw.data.user_id != current_user.id:
-        return jsonify(msg='Forbidden Resource'), 403
-    if len(SAWCriteria.query.filter_by(saw_id=saw_id).all()) != 0:
-        return jsonify(msg='SAW already has criterias! Update criterias instead'), 400
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
+    if saw is None or saw.data.user_id != current_user.id:
+        raise RaiseError("SAW is not Found", 404)
+    if len(saw.saw_criteria) != 0:
+        raise RaiseError("SAW already has criterias, update it instead!", 400)
 
     req = request.json
     for index in range(len(req['name'])):
@@ -436,40 +446,32 @@ def saw_criteria_create(saw_id):
         db.session.add(criteria)
         db.session.commit()
     
-    ahp = SAWCriteria.query.filter_by(saw_id=saw_id).all()
-    ahp_json = []
-    for a in ahp:
-        ahp_json.append(a.to_dict())
-    return jsonify(ahp_json), 200
+    saw_criterias = SAWCriteria.query.filter_by(saw_id=saw_id).order_by(SAWCriteria.id).all()
+    saw_criterias = [sc.to_dict() for sc in saw_criterias]
+    return jsonify(saw_criterias), 200
 
 # SAW Criteria Read
-@app.get('/saw/<saw_id>/criterias')
+@app.get('/api/saw/<saw_id>/criterias')
 @jwt_required()
 def saw_criterias_get(saw_id):
-    saw = SAW.query.filter_by(id=saw_id).one_or_404()
-    if saw.data.user_id != current_user.id:
-        return jsonify(msg='Forbidden Resource'), 403
-    saw_criteria = SAWCriteria.query.filter_by(saw_id=saw_id).all()
-    if len(saw_criteria) == 0:
-        return jsonify('Criterias not Found', 404)
-    saw_json = []
-    for s in saw_criteria:  
-        saw_json.append(s.to_dict())
-    return jsonify(saw_json), 200
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
+    if saw is None or saw.data.user_id != current_user.id:
+        raise RaiseError("SAW is not Found", 404)
+    saw_criteria = saw.saw_criteria
+    saw_criteria = [s.to_dict() for s in saw_criteria]
+    return jsonify(saw_criteria), 200
 
 # SAW Criteria Update
-# If updated, the CRISPS will be DELETED
-@app.put('/saw/<saw_id>/criterias/update')
+@app.put('/api/saw/<saw_id>/criterias/update')
 @jwt_required()
 def saw_criterias_update(saw_id):
-    saw = SAW.query.filter_by(id=saw_id).one_or_404()
-    if saw.data.user_id != current_user.id:
-        return jsonify(msg='Forbidden Resource'), 403
-    
-    saw_criteria = SAWCriteria.query.filter_by(saw_id=saw_id).all()
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
+    if saw is None or saw.data.user_id != current_user.id:
+        raise RaiseError("SAW is not Found", 404)
+    saw_criteria = saw.saw_criteria
     if len(saw_criteria) == 0:
-        return jsonify(msg='SAW doesn\'t have criterias yet'), 400
-
+        raise RaiseError("SAW Criteria is Empty, create it first", 400)
+    
     req = request.json
     for index in range(len(saw_criteria)):
         saw_criteria[index].name=req['name'][index]
@@ -477,49 +479,48 @@ def saw_criterias_update(saw_id):
         saw_criteria[index].weight=req['weight'][index]
         saw_criteria[index].crisp_type=req['crisp_type'][index]
     db.session.commit()
-    criteria = SAWCriteria.query.filter_by(saw_id=saw_id).all()
-    criteria_json = []
-    for a in criteria:
-        criteria_json.append(a.to_dict())
-    return jsonify(criteria_json), 200
+
+    criteria = SAWCriteria.query.filter_by(saw_id=saw_id).order_by(SAWCriteria.id).all()
+    criteria = [c.to_dict() for c in criteria]
+    return jsonify(criteria), 200
 
 # SAW Criteria Delete
 # You can only delete all criteria
-@app.delete('/saw/<saw_id>/criterias/delete')
+@app.delete('/api/saw/<saw_id>/criterias/delete')
 @jwt_required()
 def saw_criteria_delete(saw_id):
-    saw = SAW.query.filter_by(id=saw_id).one_or_404()
-    if saw.data.user_id != current_user.id:
-        return jsonify(msg='Forbidden Resource'), 403
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
+    if saw is None or saw.data.user_id != current_user.id:
+        raise RaiseError("SAW is not Found", 404)
     
-    saw_criteria = SAWCriteria.query.filter_by(saw_id=saw_id).all()
+    saw_criteria = saw.saw_criteria
     if len(saw_criteria) == 0:
-        return jsonify(msg='SAW doesn\'t have criterias yet'), 400
+        raise RaiseError("SAW doesn\'t have criterias yet", 400)
     
     for index in range(len(saw_criteria)):
         db.session.delete(saw_criteria[index])
         db.session.commit()
+    
     return jsonify(msg='Criterias Deleted'), 200
 
 # SAW Crisps Create
-@app.post('/saw/<saw_id>/criterias/crisps/create')
+@app.post('/api/saw/<saw_id>/criterias/crisps/create')
 @jwt_required()
 def saw_crisps_create(saw_id):
-    saw = SAW.query.filter_by(id=saw_id).one_or_404()
-    if saw.data.user_id != current_user.id:
-        return jsonify(msg='Forbidden Resource'), 403
-    saw_criteria = SAWCriteria.query.filter_by(saw_id=saw_id).all()
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
+    if saw is None or saw.data.user_id != current_user.id:
+        raise RaiseError("SAW is not Found", 404)
+    saw_criteria = saw.saw_criteria
     if len(saw_criteria) == 0:
-        return jsonify(msg='SAW Criteria Not Found'), 404
-    # Check one of the criteria's crisps
-    if len(SAWCrisp.query.filter_by(saw_criteria_id=saw_criteria[0].id).all()) != 0:
-        return jsonify(msg='SAW Criteria already has crisps! Update crisps instead'), 400
+        raise RaiseError("SAW Criteria is Empty, create it first!", 400)
+    for s in saw_criteria:
+        if len(s.saw_crisp) != 0:
+            raise RaiseError("SAW Criteria already has crisps. Update it instead!", 400)
 
     req = request.json
     # Check length of request is correct
     if len(req) != len(saw_criteria):
-        return jsonify(msg='Different length of Crisps and Criterias'), 400
-    
+        raise RaiseError('Different length of Crisps and Criterias', 400)
     for index in range(len(saw_criteria)):
         for c_index in range(len(req[index]['name'])):
             crisp = SAWCrisp(
@@ -540,7 +541,7 @@ def saw_crisps_create(saw_id):
     return jsonify(crisps_json), 200
 
 # SAW Crisps Read
-@app.get('/saw/<saw_id>/criterias/crisps')
+@app.get('/api/saw/<saw_id>/criterias/crisps')
 @jwt_required()
 def saw_crisps_get(saw_id):
     saw = SAW.query.filter_by(id=saw_id).one_or_404()
@@ -558,7 +559,7 @@ def saw_crisps_get(saw_id):
     return jsonify(crisps_json), 200
 
 # SAW Crips Update
-@app.put('/saw/<saw_id>/criterias/crisps/update')
+@app.put('/api/saw/<saw_id>/criterias/crisps/update')
 @jwt_required()
 def saw_crisp_update(saw_id):
     saw = SAW.query.filter_by(id=saw_id).one_or_404()
@@ -586,7 +587,7 @@ def saw_crisp_update(saw_id):
     return jsonify(crisps_json), 200
 
 # SAW Crisp Delete
-@app.delete('/saw/<saw_id>/criterias/crisps/delete')
+@app.delete('/api/saw/<saw_id>/criterias/crisps/delete')
 @jwt_required()
 def saw_crips_delete(saw_id):
     saw = SAW.query.filter_by(id=saw_id).one_or_404()
@@ -607,7 +608,7 @@ def saw_crips_delete(saw_id):
     return jsonify(msg='Crisps Deleted'), 200
 
 # SAW METHOD
-@app.get('/saw/<saw_id>/method/create')
+@app.get('/api/saw/<saw_id>/method/create')
 @jwt_required()
 def saw_method(saw_id):
     """ 
@@ -697,7 +698,7 @@ AHP CRISP IMPORTANCE: CREATE, READ, UPDATE
 """
 # AHP Create
 # Param: Name, Description, Data ID (data_id)
-@app.post('/ahp/create')
+@app.post('/api/ahp/create')
 @jwt_required()
 def ahp_create():
     name = request.form['name']
@@ -719,7 +720,7 @@ def ahp_create():
     return jsonify(ahp.to_dict()), 200
 
 # AHP List Read
-@app.get('/ahp')
+@app.get('/api/ahp')
 @jwt_required()
 def ahp_list():
     ahp = AHP.query.join(Data).filter_by(user_id = current_user.id).all()
@@ -731,7 +732,7 @@ def ahp_list():
     return jsonify(ahp_json), 200
 
 # AHP Read
-@app.get('/ahp/<ahp_id>')
+@app.get('/api/ahp/<ahp_id>')
 @jwt_required()
 def ahp_get(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
@@ -740,7 +741,7 @@ def ahp_get(ahp_id):
     return jsonify(ahp.to_dict()), 200
 
 # AHP Update
-@app.put('/ahp/<ahp_id>/update')
+@app.put('/api/ahp/<ahp_id>/update')
 @jwt_required()
 def ahp_update(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
@@ -756,7 +757,7 @@ def ahp_update(ahp_id):
     return jsonify(ahp.to_dict()), 200
 
 # AHP Delete
-@app.delete('/ahp/<ahp_id>/delete')
+@app.delete('/api/ahp/<ahp_id>/delete')
 @jwt_required()
 def ahp_delete(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
@@ -767,7 +768,7 @@ def ahp_delete(ahp_id):
     return jsonify(msg='AHP Delete Success'), 200
 
 # AHP Criterias Create
-@app.post('/ahp/<ahp_id>/criterias/create')
+@app.post('/api/ahp/<ahp_id>/criterias/create')
 @jwt_required()
 def ahp_criteria_create(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
@@ -793,7 +794,7 @@ def ahp_criteria_create(ahp_id):
     return jsonify(ahp_json), 200
 
 # AHP Criterias Read
-@app.get('/ahp/<ahp_id>/criterias')
+@app.get('/api/ahp/<ahp_id>/criterias')
 @jwt_required()
 def ahp_criterias_get(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
@@ -809,7 +810,7 @@ def ahp_criterias_get(ahp_id):
 
 # AHP Criterias Update
 # If updated, the CRISPS will be DELETED -- not implemented yet
-@app.put('/ahp/<ahp_id>/criterias/update')
+@app.put('/api/ahp/<ahp_id>/criterias/update')
 @jwt_required()
 def ahp_criterias_update(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
@@ -834,7 +835,7 @@ def ahp_criterias_update(ahp_id):
 
 # AHP Criterias Delete
 # You can only delete all criteria
-@app.delete('/ahp/<ahp_id>/criterias/delete')
+@app.delete('/api/ahp/<ahp_id>/criterias/delete')
 @jwt_required()
 def ahp_criteria_delete(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
@@ -852,7 +853,7 @@ def ahp_criteria_delete(ahp_id):
 
 # AHP Criteria Importance Create
 # Param: JSON (float number should be sent as string)
-@app.post('/ahp/<ahp_id>/criterias/importance/create')
+@app.post('/api/ahp/<ahp_id>/criterias/importance/create')
 @jwt_required()
 def ahp_criteria_importance_create(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
@@ -883,7 +884,7 @@ def ahp_criteria_importance_create(ahp_id):
     return jsonify(ahp_json), 200
 
 # AHP Criterias Importance Read
-@app.get('/ahp/<ahp_id>/criterias/importance')
+@app.get('/api/ahp/<ahp_id>/criterias/importance')
 @jwt_required()
 def ahp_criterias_importance_get(ahp_id):
     ahp = AHPCriteria.query.filter_by(ahp_id=ahp_id).all()
@@ -893,7 +894,7 @@ def ahp_criterias_importance_get(ahp_id):
     return jsonify(ahp_json), 200
 
 # AHP Criterias Importance Update 
-@app.put('/ahp/<ahp_id>/criterias/importance/update')
+@app.put('/api/ahp/<ahp_id>/criterias/importance/update')
 @jwt_required()
 def ahp_criteria_importance_update(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
@@ -925,7 +926,7 @@ def ahp_criteria_importance_update(ahp_id):
 # AHP Criterias Importance Delete -- Not implemented
 
 # AHP Crisps Create
-@app.post('/ahp/<ahp_id>/criterias/crisps/create')
+@app.post('/api/ahp/<ahp_id>/criterias/crisps/create')
 @jwt_required()
 def ahp_crisps_create(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
@@ -964,7 +965,7 @@ def ahp_crisps_create(ahp_id):
     return jsonify(crisps_json), 200
 
 # AHP Crisps Read
-@app.get('/ahp/<ahp_id>/criterias/crisps')
+@app.get('/api/ahp/<ahp_id>/criterias/crisps')
 @jwt_required()
 def ahp_crisps_get(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
@@ -986,7 +987,7 @@ def ahp_crisps_get(ahp_id):
     return jsonify(crisps_json), 200
 
 # AHP Crisps Update
-@app.put('/ahp/<ahp_id>/criterias/crisps/update')
+@app.put('/api/ahp/<ahp_id>/criterias/crisps/update')
 @jwt_required()
 def ahp_crisps_update(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
@@ -1022,7 +1023,7 @@ def ahp_crisps_update(ahp_id):
     return jsonify(crisps_json), 200
 
 # AHP Crisps Delete
-@app.delete('/ahp/<ahp_id>/criterias/crisps/delete')
+@app.delete('/api/ahp/<ahp_id>/criterias/crisps/delete')
 @jwt_required()
 def ahp_crisps_delete(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
@@ -1045,7 +1046,7 @@ def ahp_crisps_delete(ahp_id):
     return jsonify(msg='Crisps Deleted'), 200
 
 # AHP Crisps Importance Create
-@app.post('/ahp/<ahp_id>/criterias/crisps/importance/create')
+@app.post('/api/ahp/<ahp_id>/criterias/crisps/importance/create')
 @jwt_required()
 def ahp_crisps_importance_create(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
@@ -1091,7 +1092,7 @@ def ahp_crisps_importance_create(ahp_id):
     return jsonify(crisps_json), 200
 
 # AHP Crisps Importance Read
-@app.get('/ahp/<ahp_id>/criterias/crisps/importance')
+@app.get('/api/ahp/<ahp_id>/criterias/crisps/importance')
 @jwt_required()
 def ahp_crisps_importance_get(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
@@ -1117,7 +1118,7 @@ def ahp_crisps_importance_get(ahp_id):
     return jsonify(crisps_json), 200
 
 # AHP Crisps Importance Update
-@app.put('/ahp/<ahp_id>/criterias/crisps/importance/update')
+@app.put('/api/ahp/<ahp_id>/criterias/crisps/importance/update')
 @jwt_required()
 def ahp_crisps_importance_update(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
@@ -1160,7 +1161,7 @@ def ahp_crisps_importance_update(ahp_id):
     return jsonify(crisps_json), 200
 
 # AHP Crisp (Individual) Create
-@app.post('/ahp/<ahp_id>/criterias/<criteria_id>/crisps/create')
+@app.post('/api/ahp/<ahp_id>/criterias/<criteria_id>/crisps/create')
 @jwt_required()
 def ahp_crisp_create(ahp_id, criteria_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
@@ -1190,7 +1191,7 @@ def ahp_crisp_create(ahp_id, criteria_id):
     return jsonify(ahp_crisps), 200
 
 # AHP Crisp (Individual) Read
-@app.get('/ahp/<ahp_id>/criterias/<criteria_id>/crisps')
+@app.get('/api/ahp/<ahp_id>/criterias/<criteria_id>/crisps')
 @jwt_required()
 def ahp_crisp_read(ahp_id, criteria_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
@@ -1203,7 +1204,7 @@ def ahp_crisp_read(ahp_id, criteria_id):
     return jsonify(msg="Crisps is Empty" if len(ahp_crisps) == 0 else ahp_crisps), 200
 
 # AHP Crisps (Individual) Update
-@app.put('/ahp/<ahp_id>/criterias/<criteria_id>/crisps/update')
+@app.put('/api/ahp/<ahp_id>/criterias/<criteria_id>/crisps/update')
 @jwt_required()
 def ahp_crisp_update(ahp_id, criteria_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
@@ -1227,7 +1228,7 @@ def ahp_crisp_update(ahp_id, criteria_id):
     return jsonify(ahp_crisps), 200
 
 # AHP Crisp (Individual) Delete
-@app.delete('/ahp/<ahp_id>/criterias/<criteria_id>/crisps/delete')
+@app.delete('/api/ahp/<ahp_id>/criterias/<criteria_id>/crisps/delete')
 @jwt_required()
 def ahp_crisp_delete(ahp_id, criteria_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
@@ -1247,7 +1248,7 @@ def ahp_crisp_delete(ahp_id, criteria_id):
     return jsonify(msg='AHP Crisp Delete Success'), 200
 
 # AHP Crisp (Individual) Importance Create
-@app.post('/ahp/<ahp_id>/criterias/<criteria_id>/crisps/importance/create')
+@app.post('/api/ahp/<ahp_id>/criterias/<criteria_id>/crisps/importance/create')
 @jwt_required()
 def ahp_crisp_importance_create(ahp_id, criteria_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
@@ -1281,7 +1282,7 @@ def ahp_crisp_importance_create(ahp_id, criteria_id):
     return jsonify(ahp_crisp), 200
 
 # AHP Crisp (Individual) Importance Read
-@app.get('/ahp/<ahp_id>/criterias/<criteria_id>/crisps/importance')
+@app.get('/api/ahp/<ahp_id>/criterias/<criteria_id>/crisps/importance')
 @jwt_required()
 def ahp_crisp_importance_read(ahp_id, criteria_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
@@ -1305,7 +1306,7 @@ def ahp_crisp_importance_read(ahp_id, criteria_id):
     return jsonify(importances=importance), 200
 
 # AHP Crisp (Individual) Importance Update
-@app.put('/ahp/<ahp_id>/criterias/<criteria_id>/crisps/importance/update')
+@app.put('/api/ahp/<ahp_id>/criterias/<criteria_id>/crisps/importance/update')
 @jwt_required()
 def ahp_crisp_importance_update(ahp_id, criteria_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
@@ -1334,7 +1335,7 @@ def ahp_crisp_importance_update(ahp_id, criteria_id):
     return jsonify(ahp_crisp), 200
 
 # AHP Crisp (Individual) Importance Delete
-@app.delete('/ahp/<ahp_id>/criterias/<criteria_id>/crisps/importance/delete')
+@app.delete('/api/ahp/<ahp_id>/criterias/<criteria_id>/crisps/importance/delete')
 @jwt_required()
 def ahp_crisp_importance_delete(ahp_id, criteria_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
@@ -1362,7 +1363,7 @@ def ahp_crisp_importance_delete(ahp_id, criteria_id):
     return jsonify(ahp_crisp), 200
 
 # AHP METHOD (BIG CHANGE)
-@app.get('/ahp/<ahp_id>/method/create')
+@app.get('/api/ahp/<ahp_id>/method/create')
 @jwt_required()
 def ahp_method_run(ahp_id):
     """Check Availabilty if method can be run or not"""
