@@ -9,12 +9,17 @@ from datetime import timezone
 from flask import Flask, jsonify, request, redirect
 from werkzeug.utils import secure_filename
 from flask_bcrypt import Bcrypt
+from flask_cors import CORS
 
-from flask_jwt_extended import create_access_token
+
 from flask_jwt_extended import current_user
+from flask_jwt_extended import create_access_token
 from flask_jwt_extended import get_jwt
+from flask_jwt_extended import get_jwt_identity
 from flask_jwt_extended import jwt_required
 from flask_jwt_extended import JWTManager
+from flask_jwt_extended import set_access_cookies
+from flask_jwt_extended import unset_jwt_cookies
 
 from database import User
 from database import Data
@@ -47,6 +52,8 @@ load_dotenv()
 
 """ APP CONFIGURATION """
 app = Flask(__name__)
+CORS(app, supports_credentials=True)
+
 UPLOAD_FOLDER = '.\\uploads'
 RESULT_FOLDER = '.\\result'
 
@@ -67,8 +74,11 @@ CONFIGURE JWT TOKEN
 """
 # Setup the Flask-JWT-Extended extension
 ACCESS_EXPIRES = timedelta(hours=1)
+app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
 app.config["JWT_SECRET_KEY"] = os.getenv("SECRET_KEY_JWT")
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = ACCESS_EXPIRES
+app.config["JWT_COOKIE_SECURE"] = False
+app.config["JWT_COOKIE_CSRF_PROTECT"] = True
 jwt = JWTManager(app)
 
 # Callback function to check if a JWT exists in the database blocklist
@@ -79,17 +89,21 @@ def check_if_token_revoked(jwt_header, jwt_payload: dict) -> bool:
 
     return token is not None
 
-"""
-INIT DATABASE USING SQLALCHEMY
-"""
-# configure the SQL database, relative to the app instance folder
-app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
-
-# Init Database for the App
-db.init_app(app)
-
-with app.app_context():
-    db.create_all()
+# Using an `after_request` callback, we refresh any token that is within 30
+# minutes of expiring. Change the timedeltas to match the needs of your application.
+@app.after_request
+def refresh_expiring_jwts(response):
+    try:
+        exp_timestamp = get_jwt()["exp"]
+        now = datetime.now(timezone.utc)
+        target_timestamp = datetime.timestamp(now + timedelta(minutes=30))
+        if target_timestamp > exp_timestamp:
+            access_token = create_access_token(identity=get_jwt_identity())
+            set_access_cookies(response, access_token)
+        return response
+    except (RuntimeError, KeyError):
+        # Case where there is not a valid JWT. Just return the original response
+        return response
 
 """
 CALLBACK FUNCTION
@@ -110,6 +124,18 @@ def user_identity_lookup(user):
 def user_lookup_callback(_jwt_header, jwt_data):
     identity = jwt_data["sub"]
     return User.query.filter_by(id=identity).one_or_none()
+
+"""
+INIT DATABASE USING SQLALCHEMY
+"""
+# configure the SQL database, relative to the app instance folder
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
+
+# Init Database for the App
+db.init_app(app)
+
+with app.app_context():
+    db.create_all()
 
 
 """ 
@@ -215,8 +241,10 @@ def login_post():
     
     # Check Password Hash
     if bcrypt.check_password_hash(user.password, request.form["password"]):
+        response = jsonify({"message": "login successful"})
         access_token = create_access_token(identity=user)
-        return jsonify(access_token=access_token)
+        set_access_cookies(response, access_token)
+        return response, 200
     else:
         raise RaiseError("Username or Password is wrong", 403)
     
@@ -230,9 +258,9 @@ def modify_token():
     now = datetime.now(timezone.utc)
     db.session.add(TokenBlocklist(jti=jti, created_at=now))
     db.session.commit()
-    return jsonify(msg="JWT Revoked"), 200
-
-
+    response = jsonify({"message": "Logout Successful"})
+    unset_jwt_cookies(response)
+    return response, 200
 
 
 """
@@ -561,7 +589,7 @@ def saw_crisps_get(saw_id):
 # SAW Crips Update
 @app.put('/api/saw/<saw_id>/criterias/crisps/update')
 @jwt_required()
-def saw_crisp_update(saw_id):
+def saw_crisps_update(saw_id):
     saw = SAW.query.filter_by(id=saw_id).one_or_404()
     if saw.data.user_id != current_user.id:
         return jsonify(msg='Forbidden Resource'), 403
@@ -590,7 +618,7 @@ def saw_crisp_update(saw_id):
 @app.delete('/api/saw/<saw_id>/criterias/crisps/delete')
 @jwt_required()
 def saw_crips_delete(saw_id):
-    saw = SAW.query.filter_by(id=saw_id).one_or_404()
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
     if saw.data.user_id != current_user.id:
         return jsonify(msg='Forbidden Resource'), 403
     saw_criteria = SAWCriteria.query.filter_by(saw_id=saw_id).all()
@@ -607,6 +635,90 @@ def saw_crips_delete(saw_id):
             db.session.commit()
     return jsonify(msg='Crisps Deleted'), 200
 
+# SAW Crisp (Individual) Create
+@app.post('/api/saw/<saw_id>/criterias/<criteria_id>/crisps/create')
+@jwt_required()
+def saw_crisp_create(saw_id, criteria_id):
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
+    if saw is None or saw.data.user_id != current_user.id:
+        raise RaiseError("SAW is not Found", 404)
+    saw_criteria = SAWCriteria.query.filter_by(id=criteria_id, saw_id=saw_id).one_or_none()
+    if saw_criteria is None:
+        raise RaiseError("SAW Criteria is not Found", 404)
+    if len(saw_criteria.saw_crisp) != 0:
+        raise RaiseError("SAW Criteria already has crisps, update it instead!", 400)
+    
+    req = request.json
+    for index in range(len(req['name'])):
+        crisp = SAWCrisp(
+            name=req['name'][index],
+            detail=req['detail'][index],
+            weight=req['weight'][index],
+            saw_criteria_id=saw_criteria.id
+        )
+        db.session.add(crisp)
+        db.session.commit()
+    
+    saw_crisps = SAWCrisp.query.filter_by(saw_criteria_id=saw_criteria.id).order_by(SAWCrisp.id).all()
+    saw_crisps = [s.to_dict() for s in saw_crisps]
+    return jsonify(saw_crisps), 200
+
+# SAW Crisp (Individual) Read
+@app.get('/api/saw/<saw_id>/criterias/<criteria_id>/crisps')
+@jwt_required()
+def saw_crisp_read(saw_id, criteria_id):
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
+    if saw is None or saw.data.user_id != current_user.id:
+        raise RaiseError("SAW is not Found", 404)
+    saw_criteria = SAWCriteria.query.filter_by(id=criteria_id, saw_id=saw_id).one_or_none()
+    if saw_criteria is None:
+        raise RaiseError("SAW Criteria is not Found", 404)
+    saw_crisp = [s.to_dict() for s in saw_criteria.saw_crisp]
+    return jsonify(saw_crisp), 200
+
+# SAW Crisp (Individual) Update
+@app.get('/api/saw/<saw_id>/criterias/<criteria_id>/crisps/update')
+@jwt_required()
+def saw_crisp_update(saw_id, criteria_id):
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
+    if saw is None or saw.data.user_id != current_user.id:
+        raise RaiseError("SAW is not Found", 404)
+    saw_criteria = SAWCriteria.query.filter_by(id=criteria_id, saw_id=saw_id).one_or_none()
+    if saw_criteria is None:
+        raise RaiseError("SAW Criteria is not Found", 404)
+    saw_crisps = saw_criteria.saw_crisp
+    if len(saw_crisps) == 0:
+        raise RaiseError("SAW Criterria doesn't have crisps yet, create it instead!", 400)
+    
+    req = request.json
+    for index in range(len(saw_crisps)):
+        saw_crisps[index].name = req['name'][index]
+        saw_crisps[index].detail = req['detail'][index]
+        saw_crisps[index].weight = req['weight'][index]
+    db.session.commit()
+    saw_crisps = SAWCrisp.query.filter_by(saw_criteria_id=criteria_id).order_by(SAWCrisp.id).all()
+    saw_crisps = [s.to_dict() for s in saw_crisps]
+    return jsonify(saw_crisps), 200
+
+# SAW Crisp (Individual) Delete
+@app.get('/api/saw/<saw_id>/criterias/<criteria_id>/crisps/delete')
+@jwt_required()
+def saw_crisp_delete(saw_id, criteria_id):
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
+    if saw is None or saw.data.user_id != current_user.id:
+        raise RaiseError("SAW is not Found", 404)
+    saw_criteria = SAWCriteria.query.filter_by(id=criteria_id, saw_id=saw_id).one_or_none()
+    if saw_criteria is None:
+        raise RaiseError("SAW Criteria is not Found", 404)
+    saw_crisps = saw_criteria.saw_crisp
+    if len(saw_crisps) == 0:
+        raise RaiseError("SAW Criterria doesn't have crisps yet, create it first!", 400)
+    
+    for index in range(len(saw_crisps)):
+        db.session.delete(saw_crisps[index])
+    db.session.commit()
+    return jsonify(message="SAW Crisps Deleted"), 200
+
 # SAW METHOD
 @app.get('/api/saw/<saw_id>/method/create')
 @jwt_required()
@@ -614,16 +726,16 @@ def saw_method(saw_id):
     """ 
     Check SAW Criterias and Crisps availabilty
     """
-    saw = SAW.query.filter_by(id=saw_id).one_or_404()
-    if saw.data.user_id != current_user.id:
-        return jsonify(msg='Forbidden Resource'), 403
-    saw_criteria = SAWCriteria.query.filter_by(saw_id=saw_id).all()
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
+    if saw is None or saw.data.user_id != current_user.id:
+        raise RaiseError("SAW is not Found", 404)
+    saw_criteria = SAWCriteria.query.filter_by(saw_id=saw_id).order_by(SAWCriteria.id).all()
     if len(saw_criteria) == 0:
-        return jsonify(msg='SAW Criteria Not Found'), 404
+        raise RaiseError("SAW Criteria is not Found", 404)
     # Check criteria crisp's
     for criteria in saw_criteria:
         if len(SAWCrisp.query.filter_by(saw_criteria_id=criteria.id).all()) == 0:
-            return jsonify(msg="One or more criterias don\'t have crisps"), 400
+            return jsonify(message="SAW Criteria doesn't have crisps yet", criteria_id=criteria.id), 404
     
     """ 
     Input init for SAW Method
@@ -706,9 +818,9 @@ def ahp_create():
     data_id = request.form['data_id']
 
     # Check if user allowed to use the data
-    data = Data.query.filter_by(id=data_id).one_or_404()
-    if data.user_id != current_user.id:
-        return RaiseError('Forbidden Resources', 403)
+    data = Data.query.filter_by(id=data_id).one_or_none()
+    if data is None or data.user_id != current_user.id:
+        raise RaiseError('Data is not Found', 404)
     
     ahp = AHP(
         name=name,
@@ -723,9 +835,9 @@ def ahp_create():
 @app.get('/api/ahp')
 @jwt_required()
 def ahp_list():
-    ahp = AHP.query.join(Data).filter_by(user_id = current_user.id).all()
+    ahp = AHP.query.join(Data).filter_by(user_id = current_user.id).order_by(AHP.id).all()
     if len(ahp) == 0:
-        return jsonify(msg="AHP Empty"), 200
+        return jsonify(message="AHP Empty"), 200
     ahp_json = []
     for a in ahp:
         ahp_json.append(a.to_dict())
@@ -735,18 +847,18 @@ def ahp_list():
 @app.get('/api/ahp/<ahp_id>')
 @jwt_required()
 def ahp_get(ahp_id):
-    ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
-    if ahp.data.user_id != current_user.id:
-        return RaiseError('Forbidden Resource', 403)
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None or ahp.data.user_id != current_user.id:
+        return RaiseError('AHP is not Found', 404)
     return jsonify(ahp.to_dict()), 200
 
 # AHP Update
 @app.put('/api/ahp/<ahp_id>/update')
 @jwt_required()
 def ahp_update(ahp_id):
-    ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
-    if ahp.data.user_id != current_user.id:
-        return RaiseError('Forbidden Resource', 403)
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None or ahp.data.user_id != current_user.id:
+        return RaiseError('AHP is not Found', 404)
     
     name = request.form['name']
     description = request.form['description']
@@ -760,20 +872,20 @@ def ahp_update(ahp_id):
 @app.delete('/api/ahp/<ahp_id>/delete')
 @jwt_required()
 def ahp_delete(ahp_id):
-    ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
-    if ahp.data.user_id != current_user.id:
-        return RaiseError('Forbidden Resource', 403)
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None or ahp.data.user_id != current_user.id:
+        return RaiseError('AHP is not Found', 404)
     db.session.delete(ahp)
     db.session.commit()
-    return jsonify(msg='AHP Delete Success'), 200
+    return jsonify(message='AHP Delete Success'), 200
 
 # AHP Criterias Create
 @app.post('/api/ahp/<ahp_id>/criterias/create')
 @jwt_required()
 def ahp_criteria_create(ahp_id):
-    ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
-    if ahp.data.user_id != current_user.id:
-        return jsonify(msg='Forbidden Resource'), 403
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None or ahp.data.user_id != current_user.id:
+        raise RaiseError("AHP is not Found", 404)
     if len(AHPCriteria.query.filter_by(ahp_id=ahp_id).all()) != 0:
         return jsonify(msg='AHP already has criterias! Update criterias instead'), 400
 
@@ -1461,3 +1573,8 @@ def ahp_method_run(ahp_id):
     ahp.result_path=file_path
     db.session.commit()
     return jsonify('Success'), 200
+
+@app.get('/api/protectedview')
+@jwt_required()
+def protected_view():
+    return jsonify(message="Welcome to protected view")

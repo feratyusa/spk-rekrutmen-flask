@@ -7,3 +7,4 @@ SQLAlchemy-serializer
 flask-bcrypt
 flask-jwt-extended
 pandas
+flask-cors

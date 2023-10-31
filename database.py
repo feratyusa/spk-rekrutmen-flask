@@ -76,7 +76,7 @@ class Data(db.Model, SerializerMixin):
 class SAW(db.Model, SerializerMixin):
   __tablename__ = 'saw'
   
-  serialize_only = ('id', 'name', 'description', 'result_path', 'data_id', 'created_at', 'updated_at')
+  serialize_only = ('id', 'name', 'description', 'result_path', 'data_id', 'data.name', 'saw_criteria', 'created_at', 'updated_at')
   serialize_rules = ()
 
   id = db.Column(db.Integer, primary_key=True)
@@ -98,7 +98,7 @@ Criteria and Crisp Models for SAW METHOD
 class SAWCriteria(db.Model, SerializerMixin):
   __tablename__ = 'saw_criteria'
 
-  serialize_only = ('id', 'name', 'atribute', 'weight', 'crisp_type', 'saw_crisp.id')
+  serialize_only = ('id', 'name', 'atribute', 'weight', 'crisp_type', 'saw_crisp', 'created_at', 'updated_at')
   serialize_rules = ()
 
   id = db.Column(db.Integer, primary_key=True)
@@ -137,7 +137,7 @@ class SAWCrisp(db.Model, SerializerMixin):
 class AHP(db.Model, SerializerMixin):
   __tablename__ = 'ahp'
 
-  serialize_only = ('id', 'name', 'description', 'result_path', 'data_id', 'created_at', 'updated_at')
+  serialize_only = ('id', 'name', 'description', 'result_path', 'data_id', 'data.name', 'ahp_criteria', 'created_at', 'updated_at')
   serialize_rules = ()
 
   id = db.Column(db.Integer, primary_key=True)
@@ -159,7 +159,7 @@ Criteria and Crisp Models for AHP METHOD
 class AHPCriteria(db.Model, SerializerMixin):
   __tablename__ = 'ahp_criteria'
 
-  serialize_only = ('id', 'name', 'priority', 'crisp_type', 'ahp_id', 'importance', 'ahp_crisp.id')
+  serialize_only = ('id', 'name', 'priority', 'crisp_type', 'ahp_id', 'importance', 'ahp_crisp')
   serialize_rules = ()
 
   id = db.Column(db.Integer, primary_key=True)
