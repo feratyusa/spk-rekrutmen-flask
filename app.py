@@ -6,7 +6,7 @@ from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
 
-from flask import Flask, jsonify, request, redirect
+from flask import Flask, jsonify, request, redirect, send_from_directory, send_file, url_for
 from werkzeug.utils import secure_filename
 from flask_bcrypt import Bcrypt
 from flask_cors import CORS
@@ -31,6 +31,8 @@ from database import AHPCriteria
 from database import AHPCrisp
 from database import AHPCriteriaImportance
 from database import AHPCrispImportance
+from database import SAWResultFile
+from database import AHPResultFile
 from database import TokenBlocklist
 from database import db
 
@@ -130,6 +132,7 @@ INIT DATABASE USING SQLALCHEMY
 """
 # configure the SQL database, relative to the app instance folder
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
+app.config['SQLALCHEMY_ECHO'] = True
 
 # Init Database for the App
 db.init_app(app)
@@ -184,6 +187,9 @@ def user_list():
 # Parameter: username, password, email
 @app.post('/api/user/create')
 def user_create():
+    check_user = User.query.filter_by(username=request.form['username']).one_or_none()
+    if check_user is not None:
+        raise RaiseError("Username already exists", 400)
     user = User(
         username=request.form["username"],
         password=bcrypt.generate_password_hash(request.form["password"]).decode('utf-8'),
@@ -281,24 +287,23 @@ def data_form():
     # File handler
     file = request.files['file']
     file_path = ''
+    filename = ''
     # Check if user upload folder exists
     user_upload_folder = os.path.join(app.config['UPLOAD_FOLDER'], current_user.username)
     if os.path.exists(user_upload_folder) is False:
         os.mkdir(user_upload_folder)
-    # Check if user upload data folder exists
-    user_upload_data_folder = os.path.join(user_upload_folder, 'data')
-    if os.path.exists(user_upload_data_folder) is False:
-        os.mkdir(user_upload_data_folder)
 
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
-        file_path=os.path.join(user_upload_data_folder, make_unique(filename))
+        filename = make_unique(filename)
+        file_path=os.path.join(user_upload_folder, filename)
     else:
         return jsonify(msg='File type is not acceptable'), 400
 
     data = Data(
         name=request.form["name"],
-        file_path=file_path,
+        description=request.form["description"],
+        file_path=filename,
         user_id=current_user.id
     )
     file.save(file_path) # Save file to designated upload folder
@@ -327,6 +332,15 @@ def data_read(data_id):
         raise RaiseError("Data is not Found", 404)
     return jsonify(data.to_dict()), 200
 
+@app.get("/api/data/<data_id>/file")
+@jwt_required()
+def data_file_serve(data_id):
+    data = Data.query.filter_by(id=data_id, user_id=current_user.id).one_or_none()
+    if data is None:
+        raise RaiseError("Data is not Found", 404)
+    file_path = os.path.join(current_user.username, data.file_path).replace('\\', '/')
+    return send_from_directory(app.config["UPLOAD_FOLDER"], file_path, as_attachment=True)
+
 # DATA UPDATE
 # Param: name, file_path
 @app.put("/api/data/<data_id>/update")
@@ -342,13 +356,15 @@ def data_update(data_id):
     # Update filepath
     file = request.files['file']
     file_path=''
+    filename = ''
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], current_user.username, 'data', make_unique(filename))
+        filename = make_unique(filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], current_user.username, filename)
     else:
         return jsonify(msg='File type is not acceptable'), 400
     
-    data.file_path = file_path
+    data.file_path = filename
     file.save(file_path)
     db.session.commit()
 
@@ -422,6 +438,19 @@ def saw_get(saw_id):
         raise RaiseError("SAW is not Found", 404)
     return jsonify(saw.to_dict()), 200
 
+# SAW File Read
+@app.get('/api/saw/<saw_id>/file/<file_id>')
+@jwt_required()
+def saw_download_file(saw_id, file_id):
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
+    if saw is None or saw.data.user_id != current_user.id:
+        raise RaiseError("SAW is not Found", 404)
+    saw_file = SAWResultFile.query.filter_by(id=file_id).one_or_none()
+    if saw_file is None or saw_file.saw.data.user_id != current_user.id:
+        raise RaiseError("SAW File is not Found", 400)
+    file_path = os.path.join(current_user.username, "saw", saw_file.file_name).replace('\\', '/')
+    return send_from_directory(RESULT_FOLDER, file_path)
+
 # SAW Update
 @app.put('/api/saw/<saw_id>/update')
 @jwt_required()
@@ -473,7 +502,8 @@ def saw_criteria_create(saw_id):
         )    
         db.session.add(criteria)
         db.session.commit()
-    
+    saw.update_timestamp()
+    db.session.commit()
     saw_criterias = SAWCriteria.query.filter_by(saw_id=saw_id).order_by(SAWCriteria.id).all()
     saw_criterias = [sc.to_dict() for sc in saw_criterias]
     return jsonify(saw_criterias), 200
@@ -506,6 +536,7 @@ def saw_criterias_update(saw_id):
         saw_criteria[index].atribute=req['atribute'][index]
         saw_criteria[index].weight=req['weight'][index]
         saw_criteria[index].crisp_type=req['crisp_type'][index]
+    saw.update_timestamp()
     db.session.commit()
 
     criteria = SAWCriteria.query.filter_by(saw_id=saw_id).order_by(SAWCriteria.id).all()
@@ -529,6 +560,8 @@ def saw_criteria_delete(saw_id):
         db.session.delete(saw_criteria[index])
         db.session.commit()
     
+    saw.update_timestamp()
+    db.session.commit()
     return jsonify(msg='Criterias Deleted'), 200
 
 # SAW Crisps Create
@@ -566,6 +599,8 @@ def saw_crisps_create(saw_id):
     crisps_json = []
     for s in saw_crisps:  
         crisps_json.append(s.to_dict())
+    saw.update_timestamp()
+    db.session.commit()
     return jsonify(crisps_json), 200
 
 # SAW Crisps Read
@@ -606,6 +641,8 @@ def saw_crisps_update(saw_id):
             saw_crisps[c_index].detail=req[index]['detail'][c_index]
             saw_crisps[c_index].weight=req[index]['weight'][c_index]
         db.session.commit()
+    saw.update_timestamp()
+    db.session.commit()
     saw_crisps = []
     for c in saw_criteria:
         saw_crisps.extend(SAWCrisp.query.filter_by(saw_criteria_id=c.id).all())
@@ -633,6 +670,8 @@ def saw_crips_delete(saw_id):
         for c in crisps:
             db.session.delete(c)
             db.session.commit()
+    saw.update_timestamp()
+    db.session.commit()
     return jsonify(msg='Crisps Deleted'), 200
 
 # SAW Crisp (Individual) Create
@@ -658,7 +697,8 @@ def saw_crisp_create(saw_id, criteria_id):
         )
         db.session.add(crisp)
         db.session.commit()
-    
+    saw.update_timestamp()
+    db.session.commit()
     saw_crisps = SAWCrisp.query.filter_by(saw_criteria_id=saw_criteria.id).order_by(SAWCrisp.id).all()
     saw_crisps = [s.to_dict() for s in saw_crisps]
     return jsonify(saw_crisps), 200
@@ -673,11 +713,12 @@ def saw_crisp_read(saw_id, criteria_id):
     saw_criteria = SAWCriteria.query.filter_by(id=criteria_id, saw_id=saw_id).one_or_none()
     if saw_criteria is None:
         raise RaiseError("SAW Criteria is not Found", 404)
-    saw_crisp = [s.to_dict() for s in saw_criteria.saw_crisp]
+    saw_crisp = SAWCrisp.query.filter_by(saw_criteria_id=criteria_id).order_by(SAWCrisp.id).all()
+    saw_crisp = [s.to_dict() for s in saw_crisp]
     return jsonify(saw_crisp), 200
 
 # SAW Crisp (Individual) Update
-@app.get('/api/saw/<saw_id>/criterias/<criteria_id>/crisps/update')
+@app.put('/api/saw/<saw_id>/criterias/<criteria_id>/crisps/update')
 @jwt_required()
 def saw_crisp_update(saw_id, criteria_id):
     saw = SAW.query.filter_by(id=saw_id).one_or_none()
@@ -686,7 +727,7 @@ def saw_crisp_update(saw_id, criteria_id):
     saw_criteria = SAWCriteria.query.filter_by(id=criteria_id, saw_id=saw_id).one_or_none()
     if saw_criteria is None:
         raise RaiseError("SAW Criteria is not Found", 404)
-    saw_crisps = saw_criteria.saw_crisp
+    saw_crisps = SAWCrisp.query.filter_by(saw_criteria_id=criteria_id).order_by(SAWCrisp.id).all()
     if len(saw_crisps) == 0:
         raise RaiseError("SAW Criterria doesn't have crisps yet, create it instead!", 400)
     
@@ -695,13 +736,14 @@ def saw_crisp_update(saw_id, criteria_id):
         saw_crisps[index].name = req['name'][index]
         saw_crisps[index].detail = req['detail'][index]
         saw_crisps[index].weight = req['weight'][index]
+    saw.update_timestamp()
     db.session.commit()
     saw_crisps = SAWCrisp.query.filter_by(saw_criteria_id=criteria_id).order_by(SAWCrisp.id).all()
     saw_crisps = [s.to_dict() for s in saw_crisps]
     return jsonify(saw_crisps), 200
 
 # SAW Crisp (Individual) Delete
-@app.get('/api/saw/<saw_id>/criterias/<criteria_id>/crisps/delete')
+@app.delete('/api/saw/<saw_id>/criterias/<criteria_id>/crisps/delete')
 @jwt_required()
 def saw_crisp_delete(saw_id, criteria_id):
     saw = SAW.query.filter_by(id=saw_id).one_or_none()
@@ -716,6 +758,7 @@ def saw_crisp_delete(saw_id, criteria_id):
     
     for index in range(len(saw_crisps)):
         db.session.delete(saw_crisps[index])
+    saw.update_timestamp()
     db.session.commit()
     return jsonify(message="SAW Crisps Deleted"), 200
 
@@ -771,7 +814,8 @@ def saw_method(saw_id):
             )
         criterias.append(sc)
     # End of Criterias init
-    data = saw.data.file_path
+
+    data = os.path.join(app.config["UPLOAD_FOLDER"], current_user.username, saw.data.file_path)
     # for c in criterias:
     #     print(c)
     result = generate_saw_result(data_file=data, criterias=criterias)
@@ -788,8 +832,13 @@ def saw_method(saw_id):
     file_name = '{}_{}_SAW.csv'.format(saw.name, datetime.now().strftime('%Y-%m-%d_%H\'%M\'%S'))
     file_path = os.path.join(user_saw_result_folder, file_name)
     result.to_csv(file_path)
-    # Save file path to database
-    saw.result_path=file_path
+     # Save file name to database
+    saw_file = SAWResultFile(
+        file_name=file_name,
+        saw_id=saw_id
+    )
+    db.session.add(saw_file)
+    saw.update_timestamp()
     db.session.commit()
     return jsonify(saw.to_dict()), 200
 
@@ -849,8 +898,21 @@ def ahp_list():
 def ahp_get(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
     if ahp is None or ahp.data.user_id != current_user.id:
-        return RaiseError('AHP is not Found', 404)
+        raise RaiseError('AHP is not Found', 404)
     return jsonify(ahp.to_dict()), 200
+
+# AHP File Read
+@app.get('/api/ahp/<ahp_id>/file/<file_id>')
+@jwt_required()
+def ahp_download_file(ahp_id, file_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None or ahp.data.user_id != current_user.id:
+        raise RaiseError("AHP is not Found", 404)
+    ahp_file = AHPResultFile.query.filter_by(id=file_id).one_or_none()
+    if ahp_file is None or ahp_file.ahp.data.user_id != current_user.id:
+        raise RaiseError("AHP File is not Found", 400)
+    file_path = os.path.join(current_user.username, "ahp", ahp_file.file_name).replace('\\', '/')
+    return send_from_directory(RESULT_FOLDER, file_path)
 
 # AHP Update
 @app.put('/api/ahp/<ahp_id>/update')
@@ -862,8 +924,10 @@ def ahp_update(ahp_id):
     
     name = request.form['name']
     description = request.form['description']
+    data_id = request.form['data_id']
     ahp.name = name
     ahp.description = description
+    ahp.data_id = data_id
     db.session.commit()
 
     return jsonify(ahp.to_dict()), 200
@@ -874,7 +938,7 @@ def ahp_update(ahp_id):
 def ahp_delete(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
     if ahp is None or ahp.data.user_id != current_user.id:
-        return RaiseError('AHP is not Found', 404)
+        raise RaiseError('AHP is not Found', 404)
     db.session.delete(ahp)
     db.session.commit()
     return jsonify(message='AHP Delete Success'), 200
@@ -887,7 +951,7 @@ def ahp_criteria_create(ahp_id):
     if ahp is None or ahp.data.user_id != current_user.id:
         raise RaiseError("AHP is not Found", 404)
     if len(AHPCriteria.query.filter_by(ahp_id=ahp_id).all()) != 0:
-        return jsonify(msg='AHP already has criterias! Update criterias instead'), 400
+        raise RaiseError('AHP already has criterias! Update criterias instead', 400)
 
     req = request.json
     for index in range(len(req['name'])):
@@ -898,7 +962,8 @@ def ahp_criteria_create(ahp_id):
         )    
         db.session.add(criteria)
         db.session.commit()
-    
+    ahp.update_timestamp()
+    db.session.commit()
     ahp = AHPCriteria.query.filter_by(ahp_id=ahp_id).all()
     ahp_json = []
     for a in ahp:
@@ -937,6 +1002,7 @@ def ahp_criterias_update(ahp_id):
     for index in range(len(ahp_criterias)):
         ahp_criterias[index].name=req['name'][index]
         ahp_criterias[index].crisp_type=req['crisp_type'][index]
+    ahp.update_timestamp()
     db.session.commit()
 
     ahp = AHPCriteria.query.filter_by(ahp_id=ahp_id).all()
@@ -961,6 +1027,8 @@ def ahp_criteria_delete(ahp_id):
     for index in range(len(ahp_criterias)):
         db.session.delete(ahp_criterias[index])
         db.session.commit()
+    ahp.update_timestamp()
+    db.session.commit()
     return jsonify(msg='Criterias Deleted'), 200
 
 # AHP Criteria Importance Create
@@ -989,7 +1057,8 @@ def ahp_criteria_importance_create(ahp_id):
             ahp_criterias[index+1+i].importance.append(imp)
             db.session.commit()
             inc += 1
-    
+    ahp.update_timestamp()
+    db.session.commit()
     ahp_json = []
     for a in ahp_criterias:
         ahp_json.append(a.to_dict())
@@ -1008,7 +1077,7 @@ def ahp_criterias_importance_get(ahp_id):
 # AHP Criterias Importance Update 
 @app.put('/api/ahp/<ahp_id>/criterias/importance/update')
 @jwt_required()
-def ahp_criteria_importance_update(ahp_id):
+def ahp_criterias_importance_update(ahp_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_404()
     if ahp.data.user_id != current_user.id:
         return jsonify(msg='Forbidden Resource'), 403
@@ -1027,15 +1096,44 @@ def ahp_criteria_importance_update(ahp_id):
             db.session.commit()
             counter += 1
         inc+=1
-    
+    ahp.update_timestamp()
+    db.session.commit()
 
     ahp_json = []
     for a in ahp_criterias:
         ahp_json.append(a.to_dict())
     return jsonify(ahp_json), 200
 
-
-# AHP Criterias Importance Delete -- Not implemented
+# AHP Criterias Importance Delete
+@app.delete('/api/ahp/<ahp_id>/criterias/importance/delete')
+@jwt_required()
+def ahp_criterias_importance_delete(ahp_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None or ahp.data.user_id != current_user.id:
+        raise RaiseError('Forbidden Resource', 403)
+    
+    ahp_criterias = AHPCriteria.query.filter_by(ahp_id=ahp_id).order_by(AHPCriteria.id).all()
+    if len(ahp_criterias) == 0:
+        raise RaiseError('AHP doesn\'t have criterias yet', 400)
+    
+    imp = []
+    inc = 0
+    counter = 0
+    for index in range(len(ahp_criterias)-1):
+        for i in range(len(ahp_criterias)-1-index):
+            imp_list = AHPCriteria.query.filter_by(id=ahp_criterias[index].id).one()
+            imp.append(imp_list.importance[i+inc])
+            counter += 1
+        inc+=1
+    
+    imp = [db.session.delete(i) for i in imp]
+    ahp.update_timestamp()
+    db.session.commit()
+    
+    ahp_json = []
+    for a in ahp_criterias:
+        ahp_json.append(a.to_dict())
+    return jsonify(ahp_json), 200
 
 # AHP Crisps Create
 @app.post('/api/ahp/<ahp_id>/criterias/crisps/create')
@@ -1067,7 +1165,8 @@ def ahp_crisps_create(ahp_id):
             )
             db.session.add(crisp)
             db.session.commit()
-    
+    ahp.update_timestamp()
+    db.session.commit()
     ahp_crisps = []
     for c in ahp_criteria:
         ahp_crisps.extend(AHPCrisp.query.filter_by(ahp_criteria_id=c.id).all())
@@ -1125,7 +1224,8 @@ def ahp_crisps_update(ahp_id):
             ahp_crisps[c_index].name=req[index]['name'][c_index]
             ahp_crisps[c_index].detail=req[index]['detail'][c_index]
             db.session.commit()
-    
+    ahp.update_timestamp()
+    db.session.commit()
     ahp_crisps = []
     for c in ahp_criteria:
         ahp_crisps.extend(AHPCrisp.query.filter_by(ahp_criteria_id=c.id).order_by(AHPCrisp.id).all())
@@ -1155,6 +1255,8 @@ def ahp_crisps_delete(ahp_id):
         for c in crisps:
             db.session.delete(c)
             db.session.commit()
+    ahp.update_timestamp()
+    db.session.commit()
     return jsonify(msg='Crisps Deleted'), 200
 
 # AHP Crisps Importance Create
@@ -1192,7 +1294,8 @@ def ahp_crisps_importance_create(ahp_id):
                 crisps[i+1+j].importance.append(imp)
                 db.session.commit()
                 inc += 1
-    
+    ahp.update_timestamp()
+    db.session.commit()
     ahp_crisps = []
     for c in ahp_criterias:
         ahp_crisps.extend(AHPCrisp.query.filter_by(ahp_criteria_id=c.id).order_by(AHPCrisp.id).all())
@@ -1261,7 +1364,8 @@ def ahp_crisps_importance_update(ahp_id):
                 db.session.commit()
                 counter += 1
             inc+=1
-    
+    ahp.update_timestamp()
+    db.session.commit()
     ahp_crisps = []
     for c in ahp_criterias:
         ahp_crisps.extend(AHPCrisp.query.filter_by(ahp_criteria_id=c.id).order_by(AHPCrisp.id).all())
@@ -1295,7 +1399,8 @@ def ahp_crisp_create(ahp_id, criteria_id):
         )
         db.session.add(crisp)
         db.session.commit()
-    
+    ahp.update_timestamp()
+    db.session.commit()
     ahp_crisps = AHPCrisp.query.filter_by(ahp_criteria_id=ahp_criteria.id).all()
     if len(ahp_crisps) == 0:
         return jsonify(msg='AHP Crisps input failed something is wrong'), 400
@@ -1312,7 +1417,8 @@ def ahp_crisp_read(ahp_id, criteria_id):
     ahp_criteria = AHPCriteria.query.filter_by(id=criteria_id, ahp_id=ahp_id).one_or_none()
     if ahp_criteria == None:
         return jsonify(msg='AHP Criteria Not Found'), 404
-    ahp_crisps = [c.to_dict() for c in ahp_criteria.ahp_crisp]
+    ahp_crisps = AHPCrisp.query.filter_by(ahp_criteria_id=criteria_id).order_by(AHPCrisp.id).all()
+    ahp_crisps = [c.to_dict() for c in ahp_crisps]
     return jsonify(msg="Crisps is Empty" if len(ahp_crisps) == 0 else ahp_crisps), 200
 
 # AHP Crisps (Individual) Update
@@ -1334,7 +1440,8 @@ def ahp_crisp_update(ahp_id, criteria_id):
         ahp_crisps[index].name = req['name'][index]
         ahp_crisps[index].detail = req['detail'][index]
         db.session.commit()
-    
+    ahp.update_timestamp()
+    db.session.commit()
     ahp_crisps = AHPCrisp.query.filter_by(ahp_criteria_id=criteria_id).order_by(AHPCrisp.id).all()
     ahp_crisps = [c.to_dict() for c in ahp_crisps]
     return jsonify(ahp_crisps), 200
@@ -1355,6 +1462,7 @@ def ahp_crisp_delete(ahp_id, criteria_id):
     
     for index in range(len(ahp_crisp)):
         db.session.delete(ahp_crisp[index])
+    ahp.update_timestamp()
     db.session.commit()
 
     return jsonify(msg='AHP Crisp Delete Success'), 200
@@ -1389,7 +1497,8 @@ def ahp_crisp_importance_create(ahp_id, criteria_id):
             ahp_crisp[index+1+i].importance.append(imp)
             db.session.commit()
             inc += 1
-
+    ahp.update_timestamp()
+    db.session.commit()
     ahp_crisp = [c.to_dict() for c in ahp_crisp]
     return jsonify(ahp_crisp), 200
 
@@ -1403,7 +1512,7 @@ def ahp_crisp_importance_read(ahp_id, criteria_id):
     ahp_criteria = AHPCriteria.query.filter_by(id=criteria_id, ahp_id=ahp_id).one_or_none()
     if ahp_criteria == None:
         return jsonify(msg='AHP Criteria Not Found'), 404
-    ahp_crisp = ahp_criteria.ahp_crisp
+    ahp_crisp = AHPCrisp.query.filter_by(ahp_criteria_id=criteria_id).order_by(AHPCrisp.id).all()
     if len(ahp_crisp) == 0:
         return jsonify(msg="AHP Crisps is Empty, create it first!"), 400
     importance = []
@@ -1427,7 +1536,7 @@ def ahp_crisp_importance_update(ahp_id, criteria_id):
     ahp_criteria = AHPCriteria.query.filter_by(id=criteria_id, ahp_id=ahp_id).one_or_none()
     if ahp_criteria == None:
         return jsonify(msg='AHP Criteria Not Found'), 404
-    ahp_crisp = ahp_criteria.ahp_crisp
+    ahp_crisp = AHPCrisp.query.filter_by(ahp_criteria_id=criteria_id).order_by(AHPCrisp.id).all()
     if len(ahp_crisp) == 0:
         return jsonify(msg="AHP Crisps is Empty, create it first!"), 400
     for crisp in ahp_crisp:
@@ -1444,6 +1553,8 @@ def ahp_crisp_importance_update(ahp_id, criteria_id):
             counter += 1
         inc+=1
     ahp_crisp = [c.to_dict() for c in ahp_crisp]
+    ahp.update_timestamp()
+    db.session.commit()
     return jsonify(ahp_crisp), 200
 
 # AHP Crisp (Individual) Importance Delete
@@ -1462,14 +1573,17 @@ def ahp_crisp_importance_delete(ahp_id, criteria_id):
     for crisp in ahp_crisp:
         if len(crisp.importance) == 0:
             return jsonify(msg='AHP Crisp Importance is Empty, create it first', crisp_id=crisp.id), 400
-        
+    
+    imp = []
     counter = 0
     inc = 0
     for index in range(len(ahp_crisp)-1):
         for i in range(len(ahp_crisp)-1-index):
-            db.session.delete(ahp_crisp[index].importance[i+inc])
+            imp.append(ahp_crisp[index].importance[i+inc])
             counter += 1
         inc+=1
+    imp = [db.session.delete(i) for i in imp]
+    ahp.update_timestamp()
     db.session.commit()
     ahp_crisp = [c.to_dict() for c in ahp_crisp]
     return jsonify(ahp_crisp), 200
@@ -1554,7 +1668,7 @@ def ahp_method_run(ahp_id):
     for c in criterias[0].crisps:
         print(c)
     
-    data_file = ahp.data.file_path
+    data_file = os.path.join(app.config["UPLOAD_FOLDER"], current_user.username, ahp.data.file_path)
     result = generate_ahp_result(data_file=data_file, criterias_list=criterias)
     """ 
     # Save AHP Result as File
@@ -1569,10 +1683,41 @@ def ahp_method_run(ahp_id):
     file_name = '{}_{}_AHP.csv'.format(ahp.name, datetime.now().strftime('%Y-%m-%d_%H\'%M\'%S'))
     file_path = os.path.join(user_ahp_result_folder, file_name)
     result.to_csv(file_path)
-    # Save file path to database
-    ahp.result_path=file_path
+    # Save file name to database
+    ahp_file = AHPResultFile(
+        file_name=file_name,
+        ahp_id=ahp_id
+    )
+    db.session.add(ahp_file)
+    ahp.update_timestamp()
     db.session.commit()
     return jsonify('Success'), 200
+
+@app.delete('/api/saw/<saw_id>/file/<file_id>/delete')
+@jwt_required()
+def saw_result_delete(saw_id, file_id):
+    saw = SAW.query.filter_by(id=saw_id, user_id=current_user.id).one_or_none()
+    if saw is None:
+        raise RaiseError("SAW is Not Found", 404)
+    saw_file = SAWResultFile.filter_by(saw_id=saw_id, id=file_id).one_or_none()
+    if saw_file is None:
+        raise RaiseError("SAW File is Not Found", 404)
+    db.session.delete(saw_file)
+    db.session.commit()
+    return jsonify(message="SAW File deleted"), 200
+
+@app.delete('/api/ahp/<ahp_id>/file/<file_id>/delete')
+@jwt_required()
+def ahp_result_delete(ahp_id, file_id):
+    ahp = SAW.query.filter_by(id=ahp_id, user_id=current_user.id).one_or_none()
+    if ahp is None:
+        raise RaiseError("SAW is Not Found", 404)
+    ahp_file = SAWResultFile.filter_by(saw_id=ahp_id, id=file_id).one_or_none()
+    if ahp_file is None:
+        raise RaiseError("SAW File is Not Found", 404)
+    db.session.delete(ahp_file)
+    db.session.commit()
+    return jsonify(message="AHP File deleted"), 200
 
 @app.get('/api/protectedview')
 @jwt_required()
