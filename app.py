@@ -221,11 +221,20 @@ def user_edit():
 @app.put("/api/user/change-password")
 @jwt_required()
 def user_change_password():
-    user = User.query.filter_by(id=current_user.id).one()
-    new_password = bcrypt.generate_password_hash(request.form["password"]).decode('utf-8')
-    user.password = new_password
-    db.session.commit()
-    return jsonify(msg="Change password success"), 200
+    user = User.query.filter_by(id=current_user.id).one_or_none()
+    if user == None:
+        raise RaiseError("Something is wrong", 403)
+    # Check Password Hash
+    if bcrypt.check_password_hash(user.password, request.form["password"]):
+        new_password = bcrypt.generate_password_hash(request.form["new_password"]).decode('utf-8')
+        user.password = new_password
+        db.session.commit()
+        return jsonify(msg="Change password success"), 200
+    else:
+        raise RaiseError("Password is wrong", 403)
+    
+    
+    
 
 # USER DELETE
 @app.delete("/api/user/delete")
@@ -450,6 +459,20 @@ def saw_download_file(saw_id, file_id):
         raise RaiseError("SAW File is not Found", 400)
     file_path = os.path.join(current_user.username, "saw", saw_file.file_name).replace('\\', '/')
     return send_from_directory(RESULT_FOLDER, file_path)
+
+# SAW File Delete
+@app.delete('/api/saw/<saw_id>/file/<file_id>/delete')
+@jwt_required()
+def saw_delete_file(saw_id, file_id):
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
+    if saw is None or saw.data.user_id != current_user.id:
+        raise RaiseError("SAW is not Found", 404)
+    saw_file = SAWResultFile.query.filter_by(id=file_id).one_or_none()
+    if saw_file is None or saw_file.saw.data.user_id != current_user.id:
+        raise RaiseError("SAW File is not Found", 400)
+    db.session.delete(saw_file)
+    db.session.commit()
+    return jsonify(message='File Delete Success'), 200
 
 # SAW Update
 @app.put('/api/saw/<saw_id>/update')
@@ -910,9 +933,23 @@ def ahp_download_file(ahp_id, file_id):
         raise RaiseError("AHP is not Found", 404)
     ahp_file = AHPResultFile.query.filter_by(id=file_id).one_or_none()
     if ahp_file is None or ahp_file.ahp.data.user_id != current_user.id:
-        raise RaiseError("AHP File is not Found", 400)
+        raise RaiseError("AHP File is not Found", 404)
     file_path = os.path.join(current_user.username, "ahp", ahp_file.file_name).replace('\\', '/')
     return send_from_directory(RESULT_FOLDER, file_path)
+
+# AHP File Delete
+@app.delete('/api/ahp/<ahp_id>/file/<file_id>')
+@jwt_required()
+def ahp_delete_file(ahp_id, file_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None or ahp.data.user_id != current_user.id:
+        raise RaiseError("AHP is not Found", 404)
+    ahp_file = AHPResultFile.query.filter_by(id=file_id).one_or_none()
+    if ahp_file is None or ahp_file.ahp.data.user_id != current_user.id:
+        raise RaiseError("AHP File is not Found", 404)
+    db.session.delete(ahp_file)
+    db.session.commit
+    return jsonify(message="File Delete Success"), 200
 
 # AHP Update
 @app.put('/api/ahp/<ahp_id>/update')
