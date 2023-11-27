@@ -66,7 +66,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1000 * 1000 # 16MB
 bcrypt = Bcrypt(app)
 
 """ FILE UPLOAD CONFIG """
-ALLOWED_EXTENSIONS = {'csv', 'xlsx'}
+ALLOWED_EXTENSIONS = {'csv', 'xls'}
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -75,7 +75,7 @@ def allowed_file(filename):
 CONFIGURE JWT TOKEN 
 """
 # Setup the Flask-JWT-Extended extension
-ACCESS_EXPIRES = timedelta(hours=1)
+ACCESS_EXPIRES = timedelta(hours=3)
 app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
 app.config["JWT_SECRET_KEY"] = os.getenv("SECRET_KEY_JWT")
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = ACCESS_EXPIRES
@@ -132,7 +132,7 @@ INIT DATABASE USING SQLALCHEMY
 """
 # configure the SQL database, relative to the app instance folder
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
-app.config['SQLALCHEMY_ECHO'] = True
+app.config['SQLALCHEMY_ECHO'] = False
 
 # Init Database for the App
 db.init_app(app)
@@ -193,6 +193,7 @@ def user_create():
     user = User(
         username=request.form["username"],
         password=bcrypt.generate_password_hash(request.form["password"]).decode('utf-8'),
+        name=request.form["name"],
         email=request.form["email"],
     )
     db.session.add(user)
@@ -211,10 +212,12 @@ def user_detail():
 @app.put('/api/user/update')
 @jwt_required()
 def user_edit():
-    user = User.query.filter_by(id=current_user.id).one()
+    user = User.query.filter_by(id=current_user.id).one_or_none()
     user.username = request.form["username"]
+    user.name = request.form["name"]
     user.email = request.form["email"]
-    return redirect('/user/details')
+    db.session.commit()
+    return jsonify(user.to_dict()), 200
 
 # USER CHANGE PASSWORD
 # Param: password
@@ -1081,6 +1084,27 @@ def ahp_criteria_importance_create(ahp_id):
     if len(ahp_criterias) == 0:
         return jsonify(msg='AHP doesn\'t have criterias yet'), 400
     
+    # Check Consistency Ratio
+    # Get all criterias list name
+    criterias_list = []
+    for c in ahp_criterias:
+        criterias_list.append(c.name)
+    # AHP Criterias
+    criterias = []
+    for c in ahp_criterias:
+        crit = AHP_Criteria(name=c.name, crisp_type=c.crisp_type, criteria_list=criterias_list)
+        criterias.append(crit)
+    # Get AHP Criterias Importance
+    importance_list = []
+    for imp in request.json:
+        importance_list.append(eval(imp))
+    
+    input_importance(criterias=criterias, importance_list=importance_list)
+    criterias = calculate_priority(criteria_list=criterias_list, criterias=criterias)
+    if criterias['status'] is False:
+        return jsonify(CR=criterias['CR']), 412
+    criterias = criterias['criterias']
+
     req = request.json
     inc = 0
     for index in range(len(ahp_criterias)-1):
@@ -1122,6 +1146,27 @@ def ahp_criterias_importance_update(ahp_id):
     ahp_criterias = AHPCriteria.query.filter_by(ahp_id=ahp_id).order_by(AHPCriteria.id).all()
     if len(ahp_criterias) == 0:
         return jsonify(msg='AHP doesn\'t have criterias yet'), 400
+    
+    # Check Consistency Ratio
+    # Get all criterias list name
+    criterias_list = []
+    for c in ahp_criterias:
+        criterias_list.append(c.name)
+    # AHP Criterias
+    criterias = []
+    for c in ahp_criterias:
+        crit = AHP_Criteria(name=c.name, crisp_type=c.crisp_type, criteria_list=criterias_list)
+        criterias.append(crit)
+    # Get AHP Criterias Importance
+    importance_list = []
+    for imp in request.json:
+        importance_list.append(eval(imp))
+    
+    input_importance(criterias=criterias, importance_list=importance_list)
+    criterias = calculate_priority(criteria_list=criterias_list, criterias=criterias)
+    if criterias['status'] is False:
+        return jsonify(CR=criterias['CR']), 412
+    criterias = criterias['criterias']
 
     req = request.json
     inc = 0
@@ -1521,6 +1566,39 @@ def ahp_crisp_importance_create(ahp_id, criteria_id):
         if len(crisp.importance) != 0:
             return jsonify(msg='AHP Crisp Importance already Exists, update it instead!', crisp_id=crisp.id), 400
     
+    ahp_crisps = AHPCrisp.query.filter_by(ahp_criteria_id=criteria_id).order_by(AHPCrisp.id).all()
+    crisps_list = []
+    importance_number = []
+    inc = 0
+    for c in ahp_crisps:
+        if ahp_criteria.crisp_type == 0:
+            crisp = [c.name]
+            detail = []
+            d = c.detail.split(",")
+            detail.append(int(d[0]))
+            x = 1
+            comparator = []
+            while x != len(d):
+                comparator.append(int(d[x]))
+                x += 1
+            detail.append(comparator)
+            crisp.append(detail)
+            crisps_list.append(crisp)
+        else:
+            crisps_list.append(c.detail)
+    for imp in request.json:
+        importance_number.append(eval(imp))
+    crisps = []
+    if ahp_criteria.crisp_type == 0:
+        print(crisps_list)
+        crisps = generate_crisp_number(crisp_list=crisps_list, importance_list=importance_number)
+        if crisps['status'] is False:
+            raise RaiseError(crisps['CR'], 412)
+    else:
+        crisps = generate_crisp_string(crisp_list=crisps_list, importance_list=importance_number)
+        if crisps['status'] is False:
+            raise RaiseError(crisps['CR'], 412)
+
     req = request.json
     inc = 0
     for index in range(len(ahp_crisp)-1):
@@ -1580,6 +1658,39 @@ def ahp_crisp_importance_update(ahp_id, criteria_id):
         if len(crisp.importance) == 0:
             return jsonify(msg='AHP Crisp Importance is Empty, create it first', crisp_id=crisp.id), 400
     
+    ahp_crisps = AHPCrisp.query.filter_by(ahp_criteria_id=criteria_id).order_by(AHPCrisp.id).all()
+    crisps_list = []
+    importance_number = []
+    inc = 0
+    for c in ahp_crisps:
+        if ahp_criteria.crisp_type == 0:
+            crisp = [c.name]
+            detail = []
+            d = c.detail.split(",")
+            detail.append(int(d[0]))
+            x = 1
+            comparator = []
+            while x != len(d):
+                comparator.append(int(d[x]))
+                x += 1
+            detail.append(comparator)
+            crisp.append(detail)
+            crisps_list.append(crisp)
+        else:
+            crisps_list.append(c.detail)
+    for imp in request.json:
+        importance_number.append(eval(imp))
+    crisps = []
+    if ahp_criteria.crisp_type == 0:
+        print(crisps_list)
+        crisps = generate_crisp_number(crisp_list=crisps_list, importance_list=importance_number)
+        if crisps['status'] is False:
+            raise RaiseError(crisps['CR'], 412)
+    else:
+        crisps = generate_crisp_string(crisp_list=crisps_list, importance_list=importance_number)
+        if crisps['status'] is False:
+            raise RaiseError(crisps['CR'], 412)
+
     req = request.json
     counter = 0
     inc = 0
@@ -1665,8 +1776,9 @@ def ahp_method_run(ahp_id):
     
     input_importance(criterias=criterias, importance_list=importance_list)
     criterias = calculate_priority(criteria_list=criterias_list, criterias=criterias)
-    if criterias is False:
-        return jsonify(msg="Consistency Ratio is more than 0.1"), 412
+    if criterias['status'] is False:
+        raise RaiseError(criterias['CR'], 412)
+    criterias = criterias['criterias']
     
     for index in range(len(ahp_criterias)):
         ahp_crisps = AHPCrisp.query.filter_by(ahp_criteria_id=ahp_criterias[index].id).order_by(AHPCrisp.id).all()
@@ -1698,8 +1810,14 @@ def ahp_method_run(ahp_id):
         if ahp_criterias[index].crisp_type == 0:
             print(crisps_list)
             crisps = generate_crisp_number(crisp_list=crisps_list, importance_list=importance_number)
+            if crisps['status'] is False:
+                raise RaiseError(crisps['CR'], 412)
+            crisps = crisps['criterias']
         else:
             crisps = generate_crisp_string(crisp_list=crisps_list, importance_list=importance_number)
+            if crisps['status'] is False:
+                raise RaiseError(crisps['CR'], 412)
+            crisps = crisps['criterias']
         criterias[index].update_crisps(crisps)
     
     for c in criterias[0].crisps:

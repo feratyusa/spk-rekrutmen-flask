@@ -17,12 +17,18 @@ Check the Consistency Ratio
 False: CI >= 0.1
 True: CI < 0.1
 """
-def check_consistency_ratio(criteria_list, comparison_matrix, normalization_matrix):
+def calculate_consistency_ratio(criteria_list, comparison_matrix, normalization_matrix):
     sum_eigen_value = 0
     for index in range(len(criteria_list)):
         sum_eigen_value += normalization_matrix.iloc[index]['Priority'] * comparison_matrix[criteria_list[index]].sum(axis=0)
     consistency_index = (sum_eigen_value - len(criteria_list)) / (len(criteria_list) - 1)
-    return consistency_index / RANDOM_CONSISTENCY_INDEX[len(criteria_list)-1] < 0.1
+    result = { 
+        'status': False, 
+        'CR': consistency_index / RANDOM_CONSISTENCY_INDEX[len(criteria_list)-1] 
+    }
+    if result['CR'] < 0.1:
+        result['status'] = True
+    return result
 
 """ 
 This will create make the criterias/crips value passed and give it priority value
@@ -58,8 +64,10 @@ def calculate_priority(criteria_list, criterias):
     for index in range(len(criteria_list)):
         priority_list.append(nm.iloc[index]['Total']/len(criteria_list))
     nm['Priority'] = priority_list
-    if check_consistency_ratio(criteria_list=criteria_list, comparison_matrix=cm, normalization_matrix=nm) is False:
-        return False
+    cr = calculate_consistency_ratio(criteria_list=criteria_list, comparison_matrix=cm, normalization_matrix=nm)
+    if cr['status'] is False:
+        return {'status': False, 'CR': cr['CR']}
+    print(cr['CR'])
     num = 0
     for c in criterias:
         c.update_priority(nm.iloc[num]['Priority'])
@@ -67,7 +75,7 @@ def calculate_priority(criteria_list, criterias):
         num += 1
     print('====================================')
     print('====================================')
-    return criterias
+    return {'status': True, 'criterias': criterias}
 
 """ 
 CLASS FOR CRISP
