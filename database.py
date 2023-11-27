@@ -39,12 +39,13 @@ class TokenBlocklist(db.Model):
 class User(db.Model, SerializerMixin):
   __tablename__ = "user"
 
-  serialize_only = ('id', 'username', 'email', 'password', 'created_at', 'updated_at')
+  serialize_only = ('id', 'username', 'name', 'email', 'password', 'created_at', 'updated_at')
   serialize_rules = ()
 
   id = db.Column(db.Integer, primary_key=True)
   username = db.Column(db.String, unique=True, nullable=False)
   password = db.Column(db.String)
+  name = db.Column(db.String)
   email = db.Column(db.String)
   created_at = db.Column(db.TIMESTAMP, server_default=func.now())
   updated_at = db.Column(db.TIMESTAMP, server_default=func.now(), onupdate=func.current_timestamp())
