@@ -1878,3 +1878,6 @@ def ahp_result_delete(ahp_id, file_id):
 @jwt_required()
 def protected_view():
     return jsonify(message="Welcome to protected view")
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0')
