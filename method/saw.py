@@ -197,7 +197,7 @@ def generate_saw_result(data_file, criterias):
     result_m.insert(1, data.columns.values[1], data[data.columns.values[1]].to_list())
 
     # Rank the result based on total value by Descending order
-    result_m['Ranking'] = result_m['Total'].rank(ascending=False)
+    result_m['Ranking'] = result_m['Total'].rank(method='max', ascending=False)
 
     # Sort DataFrame Ascending by Ranking Columns
     result_m = result_m.sort_values(by=['Ranking'])
