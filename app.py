@@ -56,8 +56,8 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
 
-UPLOAD_FOLDER = '.\\uploads'
-RESULT_FOLDER = '.\\result'
+UPLOAD_FOLDER = 'uploads'
+RESULT_FOLDER = 'result'
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1000 * 1000 # 16MB
