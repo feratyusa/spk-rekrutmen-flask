@@ -146,22 +146,16 @@ def generate_saw_result(data_file, criterias):
     decision_matrix = {}
     criteria_num=0
     print(data_truncate)
-    for c in criterias:
-        print(c)
-        for i in c.crisps:
-            print(i)
     for column in data_truncate:
         dm_list = []
         for value in data_truncate[column].values:
             dm_list.append(criterias[criteria_num].get_weight_value(value))
         d_list = {column:dm_list}
         decision_matrix.update(d_list)
-        print(criterias[criteria_num])
         criteria_num += 1
 
     dm = pandas.DataFrame(data=decision_matrix)
-    print(dm)
-
+    
     # Get Max and Min Value for each columns that will be used for Normalization Matrix
     max_value = dm.max()
     min_value = dm.min()
@@ -172,7 +166,7 @@ def generate_saw_result(data_file, criterias):
     for column in dm:
         nm_list = []
         for value in dm[column].values:
-            nm_list.append(criterias[criteria_num].normalize_value_benefit_or_cost(value, min_value.loc[column], max_value[column]))
+            nm_list.append(criterias[criteria_num].normalize_value_benefit_or_cost(value, min_value[column], max_value[column]))
         n_list = {column:nm_list}
         normalization_matrix.update(n_list)
         criteria_num += 1

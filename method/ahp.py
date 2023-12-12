@@ -129,7 +129,7 @@ class AHP_Criteria():
     def update_crisps(self, crisps):
         self.crisps = crisps
 
-        """ 
+    """ 
     CRITERIA PROCESSS FUNCTIONS
     """
     # Process the Row Value Given with this Criteria
@@ -179,7 +179,7 @@ class AHP_Criteria():
         for c in self.crisps:
             if self.check_expression_value(rowValue, c.detail[0], c.detail[1]): # If true return Weight Value
                 return c.priority
-        return jsonify(msg="Somthing went wrong when Processing Number Criteria")
+        return jsonify(msg="Something went wrong when Processing Number Criteria")
     
     """
     STRING CRISP TYPE
