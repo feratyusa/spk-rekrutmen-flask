@@ -26,7 +26,10 @@ class Criteria():
         self.crisps = crisps
     
     def __str__(self):
-        return f"name={self.name}, weight={self.weight}, atribute={self.atribute}, crisp_type={self.crisp_type}"
+        return f"name={self.name}, weight={self.weight}, atribute={self.atribute}, crisp_type={self.crisp_type}, crisps={self.crisps}"
+    
+    def get_weight(self):
+        return self.weight
     
     """ 
     CRITERIA PROCESSS FUNCTIONS
@@ -191,15 +194,21 @@ def generate_saw_result(data_file, criterias):
     result_m.insert(1, data.columns.values[1], data[data.columns.values[1]].to_list())
 
     # Rank the result based on total value by Descending order
-    result_m['Ranking'] = result_m['Total'].rank(method='max', ascending=False)
+    result_m['Ranking'] = result_m['Total'].rank(method='min', ascending=False)
 
     # Sort DataFrame Ascending by Ranking Columns
     result_m = result_m.sort_values(by=['Ranking'])
     return result_m
 
+def get_saw_max_total_value(criterias):
+    max_value = 0
+    for c in criterias:
+        max_value += c.get_weight()
+    return max_value
 
 '''
---Uncomment if you want to test it--
+
+# --Uncomment if you want to test it--
 
 #######################
 # API INPUT SIMULATION
@@ -266,6 +275,8 @@ data_file = 'mini_dummy.csv'
 criterias = []
 criterias.extend([first_c, second_c, third_c, fourth_c])
 result = generate_saw_result(data_file=data_file, criterias=criterias)
+max_value = get_max_total_value(criterias=criterias)
 result.to_csv('out1.csv')
+print("Max Value={}".format(max_value))
 
 '''

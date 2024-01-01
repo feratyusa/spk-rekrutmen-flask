@@ -92,7 +92,7 @@ class AHP_Crisp():
         self.importance.update({name: 1})
 
     def update_priority(self, priority):
-        self.priority = priority
+        self.priority = round(priority, 5)
     
     def __str__(self):
         return f"name={self.name}, details={self.detail}, importance={self.importance}"
@@ -124,7 +124,7 @@ class AHP_Criteria():
         self.importance.update({name: 1})
 
     def update_priority(self, priority):
-        self.priority = priority
+        self.priority = round(priority, 5)
     
     def update_crisps(self, crisps):
         self.crisps = crisps
@@ -135,7 +135,7 @@ class AHP_Criteria():
     # Process the Row Value Given with this Criteria
     def get_importance_final_value(self, rowValue):
         crisp_priority_value = self.check_crisp_type(rowValue)
-        return crisp_priority_value * self.priority
+        return round(crisp_priority_value * self.priority, 5)
     
     # Check Criteria Type
     def check_crisp_type(self, rowValue):
@@ -225,7 +225,6 @@ def generate_crisp_number(crisp_list, importance_list):
         c = AHP_Crisp(name=crisp_list[index][0], details=crisp_list[index][1], criteria_list=crisp_name)
         crisps.append(c)
     input_importance(criterias=crisps, importance_list=importance_list)
-    print(crisps[0])
     crisps = calculate_priority(crisp_name, crisps)
     return crisps
 
@@ -268,25 +267,33 @@ def generate_ahp_result(data_file, criterias_list):
     rm = pandas.DataFrame(data=result_matrix)
 
     # Calculate Sum of each criteria for each rows
-    rm['Total'] = rm.sum(axis=1, numeric_only=True)
+    rm['Total'] = rm.sum(axis=1, numeric_only=True).round(5)
 
     # Insert again the ID row and identifier row (name or something else)
     rm.insert(0, data.columns.values[0], data[data.columns.values[0]].to_list())
     rm.insert(1, data.columns.values[1], data[data.columns.values[1]].to_list())
 
     # Rank the result based on total value by Descending order
-    rm['Ranking'] = rm['Total'].rank(method='max', ascending=False)
+    rm['Ranking'] = rm['Total'].rank(method='min', ascending=False)
 
     # Sort DataFrame Ascending by Ranking Columns
     rm = rm.sort_values(by=['Ranking'])
     return(rm)
 
-
+def get_ahp_max_total_value(criterias):
+    max_value = 0
+    for criteria in criterias:
+        crisp_highest_priority = 0.00
+        for crisp in criteria.crisps:
+            if crisp.priority > crisp_highest_priority:
+                crisp_highest_priority = crisp.priority
+        max_value = max_value + criteria.priority * crisp_highest_priority
+    return round(max_value, 5)
 
 
 """
 
---Uncomment if you want to test it--
+# --Uncomment if you want to test it--
 
 #######################
 # API INPUT SIMULATION
@@ -316,22 +323,22 @@ crisps_list = []
 first_crisp_list = [["First", [2, [80]]], ['Second', [5, [40, 80]]], ['Third', [4, [40]]]]
 importance_number = [3,5,3]
 first_crisp = generate_crisp_number(first_crisp_list, importance_number)
-criterias_list[0].update_crisps(first_crisp)
+criterias_list[0].update_crisps(first_crisp['criterias'])
 
 second_crisp_list = ['Kecantikan', 'Tata Busana', 'Multimedia', 'Tata Boga', 'Teknik Listrik', 'Teknik Kendaraan Ringan']
 importance_number = [2, 3, 5, 7, 9, 3, 5, 7, 9, 3, 5, 7, 3, 5, 3]
 second_crisp = generate_crisp_string(second_crisp_list, importance_number)
-criterias_list[1].update_crisps(second_crisp)
+criterias_list[1].update_crisps(second_crisp['criterias'])
 
 third_crisp_list = ['Foundation', 'Body Painting', 'Mascara', 'Coreldraw', 'Kamera', 'Mesin Jahit', 'None']
 importance_number = [2, 3, 5, 6, 7, 9, 2, 4, 5, 6, 8, 3, 5, 6, 8, 2, 3, 5, 2, 4, 3]
 third_crisp = generate_crisp_string(third_crisp_list, importance_number)
-criterias_list[2].update_crisps(third_crisp)
+criterias_list[2].update_crisps(third_crisp['criterias'])
 
 fourth_crisp_list = [["First", [2, [24]]], ['Second', [5, [12, 24]]], ['Third', [4, [12]]]]
 importance_number = [3,5,3]
 fourth_crisp = generate_crisp_number(fourth_crisp_list, importance_number)
-criterias_list[3].update_crisps(fourth_crisp)
+criterias_list[3].update_crisps(fourth_crisp['criterias'])
 
 #######################
 
@@ -339,8 +346,12 @@ criterias_list[3].update_crisps(fourth_crisp)
 # USAGE EXAMPLE
 ###############
 data_file = 'mini_dummy.csv'
+print(criterias_list[0].priority)
+max_value = get_max_total_value(criterias=criterias_list)
 result = generate_ahp_result(data_file=data_file, criterias_list=criterias_list)
 result.to_csv('out_ahp.csv')
-
+print("Max Value={}".format(max_value))
 
 """
+
+
