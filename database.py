@@ -147,6 +147,7 @@ class SAWResultFile(db.Model, SerializerMixin):
 
   id = db.Column(db.Integer, primary_key=True)
   file_name = db.Column(db.String, nullable=False)
+  max_value = db.Column(db.Float)
   created_at = db.Column(db.TIMESTAMP, server_default=func.now())
   updated_at = db.Column(db.TIMESTAMP, server_default=func.now(), onupdate=func.current_timestamp())
 
@@ -184,13 +185,12 @@ Criteria and Crisp Models for AHP METHOD
 class AHPCriteria(db.Model, SerializerMixin):
   __tablename__ = 'ahp_criteria'
 
-  serialize_only = ('id', 'name', 'priority', 'crisp_type', 'ahp_id', 'importance', 'ahp_crisp')
+  serialize_only = ('id', 'name', 'crisp_type', 'ahp_id', 'importance', 'ahp_crisp')
   serialize_rules = ()
 
   id = db.Column(db.Integer, primary_key=True)
   name = db.Column(db.String, nullable=False)
   crisp_type = db.Column(db.Integer, nullable=False) # 0 = Number, 1 = String
-  priority = db.Column(db.Float)
   created_at = db.Column(db.TIMESTAMP, server_default=func.now())
   updated_at = db.Column(db.TIMESTAMP, server_default=func.now(), onupdate=func.current_timestamp())
 
@@ -204,13 +204,12 @@ class AHPCriteria(db.Model, SerializerMixin):
 class AHPCrisp(db.Model, SerializerMixin):
   __tablename__ = 'ahp_crisp'
 
-  serialize_only = ('id', 'name', 'detail', 'priority', 'importance', 'created_at', 'updated_at')
+  serialize_only = ('id', 'name', 'detail', 'importance', 'created_at', 'updated_at')
   serialize_rules = ()
 
   id = db.Column(db.Integer, primary_key=True)
   name = db.Column(db.String, nullable=False)
   detail = db.Column(db.String, nullable=False)
-  priority = db.Column(db.Float)
   created_at = db.Column(db.TIMESTAMP, server_default=func.now())
   updated_at = db.Column(db.TIMESTAMP, server_default=func.now(), onupdate=func.current_timestamp())
 
@@ -259,6 +258,7 @@ class AHPResultFile(db.Model, SerializerMixin):
 
   id = db.Column(db.Integer, primary_key=True)
   file_name = db.Column(db.String, nullable=False)
+  max_value = db.Column(db.Float)
   created_at = db.Column(db.TIMESTAMP, server_default=func.now())
   updated_at = db.Column(db.TIMESTAMP, server_default=func.now(), onupdate=func.current_timestamp())
 
