@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from uuid import uuid4
+from json import loads
 
 from datetime import datetime
 from datetime import timedelta
@@ -10,7 +11,6 @@ from flask import Flask, jsonify, request, redirect, send_from_directory, send_f
 from werkzeug.utils import secure_filename
 from flask_bcrypt import Bcrypt
 from flask_cors import CORS
-
 
 from flask_jwt_extended import current_user
 from flask_jwt_extended import create_access_token
@@ -36,9 +36,12 @@ from database import AHPResultFile
 from database import TokenBlocklist
 from database import db
 
+from utils import drop_rows_based_on_threshold
+
 from method.saw import Criteria as SawCriteria
 from method.saw import Crisp as SawCrisp
 from method.saw import generate_saw_result
+from method.saw import get_saw_max_total_value
 
 from method.ahp import AHP_Criteria
 from method.ahp import input_importance
@@ -46,7 +49,8 @@ from method.ahp import calculate_priority
 from method.ahp import AHP_Crisp
 from method.ahp import generate_crisp_string
 from method.ahp import generate_crisp_number
-from method.ahp import generate_ahp_result
+from method.ahp import generate_ahp_result 
+from method.ahp import get_ahp_max_total_value
 
 from error_handler import RaiseError
 
@@ -463,6 +467,22 @@ def saw_download_file(saw_id, file_id):
     file_path = os.path.join(current_user.username, "saw", saw_file.file_name).replace('\\', '/')
     return send_from_directory(RESULT_FOLDER, file_path)
 
+# SAW File with Threshold Read
+@app.post('/api/saw/<saw_id>/file/<file_id>/view')
+@jwt_required()
+def saw_file_threshodl(saw_id, file_id):
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
+    if saw is None or saw.data.user_id != current_user.id:
+        raise RaiseError("SAW is not Found", 404)
+    saw_file = SAWResultFile.query.filter_by(id=file_id).one_or_none()
+    if saw_file is None or saw_file.saw.data.user_id != current_user.id:
+        raise RaiseError("SAW File is not Found", 400)
+    file_path = os.path.join(RESULT_FOLDER, current_user.username, "saw", saw_file.file_name).replace('\\', '/')
+    data = drop_rows_based_on_threshold(file_path=file_path, max_value=int(saw_file.max_value), threshold_percentage=int(request.form['threshold']))
+    result = data.to_json(orient='split')
+    result_json = loads(result)
+    return result_json, 200
+
 # SAW File Delete
 @app.delete('/api/saw/<saw_id>/file/<file_id>/delete')
 @jwt_required()
@@ -842,13 +862,16 @@ def saw_method(saw_id):
     # End of Criterias init
 
     data = os.path.join(app.config["UPLOAD_FOLDER"], current_user.username, saw.data.file_path)
-    # for c in criterias:
-    #     print(c)
+
+    # Get Max Value of SAW Method
+    max_value = get_saw_max_total_value(criterias=criterias)
+    # Get SAW Result
     result = generate_saw_result(data_file=data, criterias=criterias)
+
     """ 
     # Save SAW Result as File
     # """
-    # # Check if folder exists
+    # Check if folder exists
     user_saw_result_folder = os.path.join(RESULT_FOLDER, current_user.username)
     if os.path.exists(user_saw_result_folder) is False:
         os.mkdir(user_saw_result_folder)
@@ -857,10 +880,12 @@ def saw_method(saw_id):
         os.mkdir(user_saw_result_folder)
     file_name = '{}_{}_SAW.csv'.format(saw.name, datetime.now().strftime('%Y-%m-%d_%H\'%M\'%S'))
     file_path = os.path.join(user_saw_result_folder, file_name)
-    result.to_csv(file_path)
-     # Save file name to database
+    result.to_csv(file_path, index=False)
+
+    # Save file name and the max value to database
     saw_file = SAWResultFile(
         file_name=file_name,
+        max_value=max_value,
         saw_id=saw_id
     )
     db.session.add(saw_file)
@@ -939,6 +964,22 @@ def ahp_download_file(ahp_id, file_id):
         raise RaiseError("AHP File is not Found", 404)
     file_path = os.path.join(current_user.username, "ahp", ahp_file.file_name).replace('\\', '/')
     return send_from_directory(RESULT_FOLDER, file_path)
+
+# AHP File with Threshold Read
+@app.post('/api/ahp/<ahp_id>/file/<file_id>/view')
+@jwt_required()
+def ahp_file_threshodl(ahp_id, file_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None or ahp.data.user_id != current_user.id:
+        raise RaiseError("AHP is not Found", 404)
+    ahp_file = AHPResultFile.query.filter_by(id=file_id).one_or_none()
+    if ahp_file is None or ahp_file.ahp.data.user_id != current_user.id:
+        raise RaiseError("AHP File is not Found", 404)
+    file_path = os.path.join(RESULT_FOLDER, current_user.username, "ahp", ahp_file.file_name).replace('\\', '/')
+    data = drop_rows_based_on_threshold(file_path=file_path, max_value=float(ahp_file.max_value), threshold_percentage=int(request.form['threshold']))
+    result = data.to_json(orient='split')
+    result_json = loads(result)
+    return result_json, 200
 
 # AHP File Delete
 @app.delete('/api/ahp/<ahp_id>/file/<file_id>')
@@ -1824,6 +1865,10 @@ def ahp_method_run(ahp_id):
         print(c)
     
     data_file = os.path.join(app.config["UPLOAD_FOLDER"], current_user.username, ahp.data.file_path)
+
+    # Get Max Value of AHP Method
+    max_value = get_ahp_max_total_value(criterias=criterias)
+    # Get result of AHP Method
     result = generate_ahp_result(data_file=data_file, criterias_list=criterias)
     """ 
     # Save AHP Result as File
@@ -1837,16 +1882,18 @@ def ahp_method_run(ahp_id):
         os.mkdir(user_ahp_result_folder)
     file_name = '{}_{}_AHP.csv'.format(ahp.name, datetime.now().strftime('%Y-%m-%d_%H\'%M\'%S'))
     file_path = os.path.join(user_ahp_result_folder, file_name)
-    result.to_csv(file_path)
-    # Save file name to database
+    result.to_csv(file_path, index=False)
+
+    # Save file name and max value to database
     ahp_file = AHPResultFile(
         file_name=file_name,
+        max_value=max_value,
         ahp_id=ahp_id
     )
     db.session.add(ahp_file)
     ahp.update_timestamp()
     db.session.commit()
-    return jsonify('Success'), 200
+    return jsonify(ahp.to_dict()), 200
 
 @app.delete('/api/saw/<saw_id>/file/<file_id>/delete')
 @jwt_required()
