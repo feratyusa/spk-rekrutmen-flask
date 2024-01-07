@@ -89,7 +89,7 @@ class Criteria():
     """
     def string_criteria(self, rowValue):
         for c in self.crisps:
-            if rowValue.lower() == c.detail[0].lower():
+            if rowValue.lower() == c.detail[0].lower().strip():
                 return c.weight
         return jsonify(msg='Something went wrong when Procesing String Criteria')
 
@@ -100,8 +100,7 @@ class Criteria():
         weight = 1
         try:
             for c in self.crisps:
-                print('{}-{}'.format(c.detail[0].lower(), rowValue.lower()))
-                if c.detail[0].lower() in rowValue.lower() and weight < c.weight:
+                if c.detail[0].lower().strip() in rowValue.lower() and weight < c.weight:
                     weight = c.weight
             return weight
         except:
@@ -148,7 +147,6 @@ def generate_saw_result(data_file, criterias):
     data_truncate = data.drop(columns=[data.columns[0],data.columns[1]], axis=1)
     decision_matrix = {}
     criteria_num=0
-    print(data_truncate)
     for column in data_truncate:
         dm_list = []
         for value in data_truncate[column].values:
@@ -175,7 +173,6 @@ def generate_saw_result(data_file, criterias):
         criteria_num += 1
 
     nm = pandas.DataFrame(data=normalization_matrix)
-    print(nm)
 
     # Calculate Weight * Normalization Value for each row
     result_m = nm
@@ -185,7 +182,6 @@ def generate_saw_result(data_file, criterias):
             result_m.loc[index, column] = criterias[criteria_num].calculate_weight_result(result_m.loc[index, column])
         criteria_num += 1
 
-    print(result_m)
     # Calculate Sum of each criteria for each rows
     result_m['Total'] = result_m.sum(axis=1, numeric_only=True)
 
@@ -206,77 +202,74 @@ def get_saw_max_total_value(criterias):
         max_value += c.get_weight()
     return max_value
 
-'''
 
-# --Uncomment if you want to test it--
+# # --Uncomment if you want to test it--
 
-#######################
-# API INPUT SIMULATION
-#######################
+# #######################
+# # API INPUT SIMULATION
+# #######################
 
 
-# First Criteria
-first_crisp = Crisp(detail=[2, [80]], weight=3)
-second_crisp = Crisp(detail=[5, [40,80]], weight=2)
-third_crisp = Crisp(detail=[4, [40]], weight=1)
-crisps = []
-crisps.extend([first_crisp, second_crisp, third_crisp])
+# # First Criteria
+# first_crisp = Crisp(detail=[2, [80]], weight=3)
+# second_crisp = Crisp(detail=[5, [40,80]], weight=2)
+# third_crisp = Crisp(detail=[4, [40]], weight=1)
+# crisps = []
+# crisps.extend([first_crisp, second_crisp, third_crisp])
 
-first_c = Criteria(
-    name="Mindset", weight=30, atribute=BENEFIT, crisp_type=0, crisps=crisps
-)
+# first_c = Criteria(
+#     name="Mindset", weight=30, atribute=BENEFIT, crisp_type=0, crisps=crisps
+# )
 
-# Second Criteria
-first_crisp = Crisp(detail=["Kecantikan"], weight=6)
-second_crisp = Crisp(detail=["Tata Busana"], weight=5)
-third_crisp= Crisp(detail=["Multimedia"], weight=4)
-fourth_crisp = Crisp(detail=["Tata Boga"], weight=3)
-fifth_crisp= Crisp(detail=["Teknik Listrik"], weight=2)
-sixth_crisp = Crisp(detail=["Teknik Kendaraan Ringan"], weight=1)
-crisps = []
-crisps.extend([first_crisp, second_crisp, third_crisp, fourth_crisp, fifth_crisp, sixth_crisp])
+# # Second Criteria
+# first_crisp = Crisp(detail=["Kecantikan"], weight=6)
+# second_crisp = Crisp(detail=["Tata Busana"], weight=5)
+# third_crisp= Crisp(detail=["Multimedia"], weight=4)
+# fourth_crisp = Crisp(detail=["Tata Boga"], weight=3)
+# fifth_crisp= Crisp(detail=["Teknik Listrik"], weight=2)
+# sixth_crisp = Crisp(detail=["Teknik Kendaraan Ringan"], weight=1)
+# crisps = []
+# crisps.extend([first_crisp, second_crisp, third_crisp, fourth_crisp, fifth_crisp, sixth_crisp])
 
-second_c = Criteria(
-    name="Skillset", weight=50, atribute=BENEFIT, crisp_type=1, crisps=crisps
-)
+# second_c = Criteria(
+#     name="Skillset", weight=50, atribute=BENEFIT, crisp_type=1, crisps=crisps
+# )
 
-# Third Criteria
-first_crisp = Crisp(detail=["Foundation"], weight=7)
-second_crisp = Crisp(detail=["Body Painting"], weight=6)
-third_crisp= Crisp(detail=["Mascara"], weight=5)
-fourth_crisp = Crisp(detail=["Coreldraw"], weight=4)
-fifth_crisp= Crisp(detail=["Kamera"], weight=3)
-sixth_crisp = Crisp(detail=["Mesin Jahit"], weight=2)
-crisps = []
-crisps.extend([first_crisp, second_crisp, third_crisp, fourth_crisp, fifth_crisp, sixth_crisp])
+# # Third Criteria
+# first_crisp = Crisp(detail=["Foundation"], weight=7)
+# second_crisp = Crisp(detail=["Body Painting"], weight=6)
+# third_crisp= Crisp(detail=["Mascara"], weight=5)
+# fourth_crisp = Crisp(detail=["Coreldraw"], weight=4)
+# fifth_crisp= Crisp(detail=["Kamera"], weight=3)
+# sixth_crisp = Crisp(detail=["Mesin Jahit"], weight=2)
+# crisps = []
+# crisps.extend([first_crisp, second_crisp, third_crisp, fourth_crisp, fifth_crisp, sixth_crisp])
 
-third_c = Criteria(
-    name="Toolset", weight=20, atribute=BENEFIT, crisp_type=2, crisps=crisps
-)
+# third_c = Criteria(
+#     name="Toolset", weight=20, atribute=BENEFIT, crisp_type=2, crisps=crisps
+# )
 
-# Fourth Criteria
-first_crisp = Crisp(detail=[2, [24]], weight=3)
-second_crisp = Crisp(detail=[5, [12,24]], weight=2)
-third_crisp = Crisp(detail=[4, [12]], weight=1)
-crisps = []
-crisps.extend([first_crisp, second_crisp, third_crisp])
+# # Fourth Criteria
+# first_crisp = Crisp(detail=[2, [24]], weight=3)
+# second_crisp = Crisp(detail=[5, [12,24]], weight=2)
+# third_crisp = Crisp(detail=[4, [12]], weight=1)
+# crisps = []
+# crisps.extend([first_crisp, second_crisp, third_crisp])
 
-fourth_c = Criteria(
-    name="Mindset", weight=40, atribute=BENEFIT, crisp_type=0, crisps=crisps
-)
+# fourth_c = Criteria(
+#     name="Mindset", weight=40, atribute=BENEFIT, crisp_type=0, crisps=crisps
+# )
 
-#######################
+# #######################
 
-###############
-# USAGE EXAMPLE
-###############
+# ###############
+# # USAGE EXAMPLE
+# ###############
 
-data_file = 'mini_dummy.csv'
-criterias = []
-criterias.extend([first_c, second_c, third_c, fourth_c])
-result = generate_saw_result(data_file=data_file, criterias=criterias)
-max_value = get_max_total_value(criterias=criterias)
-result.to_csv('out1.csv')
-print("Max Value={}".format(max_value))
-
-'''
+# data_file = 'mini_dummy.csv'
+# criterias = []
+# criterias.extend([first_c, second_c, third_c, fourth_c])
+# result = generate_saw_result(data_file=data_file, criterias=criterias)
+# max_value = get_saw_max_total_value(criterias=criterias)
+# result.to_csv('out1.csv')
+# print("Max Value={}".format(max_value))

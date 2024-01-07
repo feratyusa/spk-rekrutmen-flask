@@ -65,9 +65,6 @@ def calculate_priority(criteria_list, criterias):
         priority_list.append(nm.iloc[index]['Total']/len(criteria_list))
     nm['Priority'] = priority_list
     cr = calculate_consistency_ratio(criteria_list=criteria_list, comparison_matrix=cm, normalization_matrix=nm)
-    if cr['status'] is False:
-        return {'status': False, 'CR': cr['CR']}
-    print(cr['CR'])
     num = 0
     for c in criterias:
         c.update_priority(nm.iloc[num]['Priority'])
@@ -75,6 +72,8 @@ def calculate_priority(criteria_list, criterias):
         num += 1
     print('====================================')
     print('====================================')
+    if cr['status'] is False:
+        return {'status': False, 'CR': cr['CR']}
     return {'status': True, 'criterias': criterias}
 
 """ 
@@ -190,7 +189,7 @@ class AHP_Criteria():
         priority = 0
         try:
             for c in self.crisps:
-                if c.detail[0].lower() in rowValue.lower() and priority < c.priority:
+                if c.detail[0].lower().strip() in rowValue.lower() and priority < c.priority:
                     priority = c.priority
                     found = True
             if found is False:
@@ -291,67 +290,63 @@ def get_ahp_max_total_value(criterias):
     return round(max_value, 5)
 
 
-"""
+# # --Uncomment if you want to test it--
 
-# --Uncomment if you want to test it--
+# #######################
+# # API INPUT SIMULATION
+# #######################
 
-#######################
-# API INPUT SIMULATION
-#######################
+# # Get all the criteria name first
+# criterias_name = ["Mindset", "Skillset", "Toolset", "Pengalaman"]
+# importance_number = [1/5, 3, 1/3, 7, 3, 1/5]
 
-# Get all the criteria name first
-criterias_name = ["Mindset", "Skillset", "Toolset", "Pengalaman"]
-importance_number = [1/5, 3, 1/3, 7, 3, 1/5]
+# # Init criteria
+# first_c = AHP_Criteria(name="Mindset", crisp_type=0, criteria_list=criterias_name)
+# second_c = AHP_Criteria(name="Skillset", crisp_type=1, criteria_list=criterias_name)
+# third_c = AHP_Criteria(name="Toolset", crisp_type=1, criteria_list=criterias_name)
+# fourth_c = AHP_Criteria(name="Pengalaman", crisp_type=0, criteria_list=criterias_name)
 
-# Init criteria
-first_c = AHP_Criteria(name="Mindset", crisp_type=0, criteria_list=criterias_name)
-second_c = AHP_Criteria(name="Skillset", crisp_type=1, criteria_list=criterias_name)
-third_c = AHP_Criteria(name="Toolset", crisp_type=1, criteria_list=criterias_name)
-fourth_c = AHP_Criteria(name="Pengalaman", crisp_type=0, criteria_list=criterias_name)
+# criterias_list = []
+# criterias_list.extend([first_c, second_c, third_c, fourth_c])
 
-criterias_list = []
-criterias_list.extend([first_c, second_c, third_c, fourth_c])
-
-input_importance(criterias=criterias_list, importance_list=importance_number) # Include it in api input
-calculate_priority(criteria_list=criterias_name, criterias=criterias_list) # This one too and so on
+# input_importance(criterias=criterias_list, importance_list=importance_number) # Include it in api input
+# calculate_priority(criteria_list=criterias_name, criterias=criterias_list) # This one too and so on
 
 
-# CRISP FOR EACH CRITERIA
+# # CRISP FOR EACH CRITERIA
 
-crisps_list = []
+# crisps_list = []
 
-first_crisp_list = [["First", [2, [80]]], ['Second', [5, [40, 80]]], ['Third', [4, [40]]]]
-importance_number = [3,5,3]
-first_crisp = generate_crisp_number(first_crisp_list, importance_number)
-criterias_list[0].update_crisps(first_crisp['criterias'])
+# first_crisp_list = [["First", [2, [85]]], ['Second', [5, [71, 85]]], ['Third', [5, [56, 70]]], ['Fourth', [5, [40, 55]]], ['Fifth', [4, [40]]]]
+# importance_number = [3,5,7,9,3,5,7,3,5,3]
+# first_crisp = generate_crisp_number(first_crisp_list, importance_number)
+# criterias_list[0].update_crisps(first_crisp['criterias'])
 
-second_crisp_list = ['Kecantikan', 'Tata Busana', 'Multimedia', 'Tata Boga', 'Teknik Listrik', 'Teknik Kendaraan Ringan']
-importance_number = [2, 3, 5, 7, 9, 3, 5, 7, 9, 3, 5, 7, 3, 5, 3]
-second_crisp = generate_crisp_string(second_crisp_list, importance_number)
-criterias_list[1].update_crisps(second_crisp['criterias'])
+# second_crisp_list = ['Teknik Kendaraan Ringan', 'Teknik Listrik', 'Multimedia', 'Tata Boga', 'Kecantikan', 'Tata Busana' ]
+# importance_number = [2, 3, 5, 7, 9, 3, 5, 7, 9, 3, 5, 7, 3, 5, 3]
+# second_crisp = generate_crisp_string(second_crisp_list, importance_number)
+# criterias_list[1].update_crisps(second_crisp['criterias'])
 
-third_crisp_list = ['Foundation', 'Body Painting', 'Mascara', 'Coreldraw', 'Kamera', 'Mesin Jahit', 'None']
-importance_number = [2, 3, 5, 6, 7, 9, 2, 4, 5, 6, 8, 3, 5, 6, 8, 2, 3, 5, 2, 4, 3]
-third_crisp = generate_crisp_string(third_crisp_list, importance_number)
-criterias_list[2].update_crisps(third_crisp['criterias'])
+# third_crisp_list = ['Kunci Pas', 'Kunci Inggris', 'Alat Ukur Tekanan Ban', 'Kompresor Udara', 'Solder Listrik', 'Multimeter', 'None']
+# importance_number = [2, 3, 5, 6, 7, 9, 2, 4, 5, 6, 8, 3, 5, 6, 8, 2, 3, 5, 2, 4, 3]
+# third_crisp = generate_crisp_string(third_crisp_list, importance_number)
+# criterias_list[2].update_crisps(third_crisp['criterias'])
 
-fourth_crisp_list = [["First", [2, [24]]], ['Second', [5, [12, 24]]], ['Third', [4, [12]]]]
-importance_number = [3,5,3]
-fourth_crisp = generate_crisp_number(fourth_crisp_list, importance_number)
-criterias_list[3].update_crisps(fourth_crisp['criterias'])
+# fourth_crisp_list = [["First", [2, [24]]], ['Second', [5, [19, 24]]], ['Third', [5, [12, 18]]], ['Fourth', [5, [6, 12]]], ['Fifth', [4, [6]]]]
+# importance_number = [3,5,7,9,3,5,7,3,5,3]
+# fourth_crisp = generate_crisp_number(fourth_crisp_list, importance_number)
+# criterias_list[3].update_crisps(fourth_crisp['criterias'])
 
-#######################
+# #######################
 
-###############
-# USAGE EXAMPLE
-###############
-data_file = 'mini_dummy.csv'
-print(criterias_list[0].priority)
-max_value = get_max_total_value(criterias=criterias_list)
-result = generate_ahp_result(data_file=data_file, criterias_list=criterias_list)
-result.to_csv('out_ahp.csv')
-print("Max Value={}".format(max_value))
-
-"""
+# ###############
+# # USAGE EXAMPLE
+# ###############``
+# data_file = 'mini_dummy.csv'
+# print(criterias_list[0].priority)
+# max_value = get_ahp_max_total_value(criterias=criterias_list)
+# result = generate_ahp_result(data_file=data_file, criterias_list=criterias_list)
+# result.to_csv('out_ahp.csv')
+# print("Max Value={}".format(max_value))
 
 
