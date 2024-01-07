@@ -1006,7 +1006,7 @@ def ahp_file_get(ahp_id, file_id):
     return jsonify(ahp_file.to_dict()), 200
 
 # AHP File Delete
-@app.delete('/api/ahp/<ahp_id>/file/<file_id>')
+@app.delete('/api/ahp/<ahp_id>/file/<file_id>/delete')
 @jwt_required()
 def ahp_delete_file(ahp_id, file_id):
     ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
@@ -1016,7 +1016,7 @@ def ahp_delete_file(ahp_id, file_id):
     if ahp_file is None or ahp_file.ahp.data.user_id != current_user.id:
         raise RaiseError("AHP File is not Found", 404)
     db.session.delete(ahp_file)
-    db.session.commit
+    db.session.commit()
     return jsonify(message="File Delete Success"), 200
 
 # AHP Update
@@ -1917,32 +1917,6 @@ def ahp_method_run(ahp_id):
     ahp.update_timestamp()
     db.session.commit()
     return jsonify(ahp.to_dict()), 200
-
-@app.delete('/api/saw/<saw_id>/file/<file_id>/delete')
-@jwt_required()
-def saw_result_delete(saw_id, file_id):
-    saw = SAW.query.filter_by(id=saw_id).one_or_none()
-    if saw is None or saw.data.user_id != current_user.id:
-        raise RaiseError("SAW is Not Found", 404)
-    saw_file = SAWResultFile.query.filter_by(saw_id=saw_id, id=file_id).one_or_none()
-    if saw_file is None:
-        raise RaiseError("SAW File is Not Found", 404)
-    db.session.delete(saw_file)
-    db.session.commit()
-    return jsonify(message="SAW File deleted"), 200
-
-@app.delete('/api/ahp/<ahp_id>/file/<file_id>/delete')
-@jwt_required()
-def ahp_result_delete(ahp_id, file_id):
-    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
-    if ahp is None or ahp.data.user_id != current_user.id:
-        raise RaiseError("AHP is Not Found", 404)
-    ahp_file = AHPResultFile.query.filter_by(ahp_id=ahp_id, id=file_id).one_or_none()
-    if ahp_file is None:
-        raise RaiseError("AHP File is Not Found", 404)
-    db.session.delete(ahp_file)
-    db.session.commit()
-    return jsonify(message="AHP File deleted"), 200
 
 @app.get('/api/protectedview')
 @jwt_required()
