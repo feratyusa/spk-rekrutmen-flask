@@ -142,7 +142,7 @@ class SAWCrisp(db.Model, SerializerMixin):
 class SAWResultFile(db.Model, SerializerMixin):
   __tablename__ = 'saw_result_file'
 
-  serialize_only = ('id', 'file_name', 'created_at', 'updated_at')
+  serialize_only = ('id', 'file_name', 'max_value', 'created_at', 'updated_at')
   serialize_rules = ()
 
   id = db.Column(db.Integer, primary_key=True)
@@ -253,7 +253,7 @@ class AHPCrispImportance(db.Model, SerializerMixin):
 class AHPResultFile(db.Model, SerializerMixin):
   __tablename__ = 'ahp_result_file'
 
-  serialize_only = ('id', 'file_name', 'created_at', 'updated_at')
+  serialize_only = ('id', 'file_name', 'max_value', 'created_at', 'updated_at')
   serialize_rules = ()
 
   id = db.Column(db.Integer, primary_key=True)
