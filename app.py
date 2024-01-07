@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 from uuid import uuid4
-from json import loads
+from json import loads, dumps
 
 from datetime import datetime
 from datetime import timedelta
@@ -481,7 +481,20 @@ def saw_file_threshodl(saw_id, file_id):
     data = drop_rows_based_on_threshold(file_path=file_path, max_value=int(saw_file.max_value), threshold_percentage=int(request.form['threshold']))
     result = data.to_json(orient='split')
     result_json = loads(result)
-    return result_json, 200
+    result_json['max_value'] = saw_file.max_value
+    result_json['created_at'] = saw_file.created_at
+    return jsonify(result_json), 200
+
+@app.get('/api/saw/<saw_id>/file/<file_id>/details')
+@jwt_required()
+def saw_file_get(saw_id, file_id):
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
+    if saw is None or saw.data.user_id != current_user.id:
+        raise RaiseError("SAW is not Found", 404)
+    saw_file = SAWResultFile.query.filter_by(id=file_id).one_or_none()
+    if saw_file is None or saw_file.saw.data.user_id != current_user.id:
+        raise RaiseError("SAW File is not Found", 400)
+    return jsonify(saw_file.to_dict()), 200
 
 # SAW File Delete
 @app.delete('/api/saw/<saw_id>/file/<file_id>/delete')
@@ -980,6 +993,17 @@ def ahp_file_threshodl(ahp_id, file_id):
     result = data.to_json(orient='split')
     result_json = loads(result)
     return result_json, 200
+
+@app.get('/api/ahp/<ahp_id>/file/<file_id>/details')
+@jwt_required()
+def ahp_file_get(ahp_id, file_id):
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None or ahp.data.user_id != current_user.id:
+        raise RaiseError("AHP is not Found", 404)
+    ahp_file = AHPResultFile.query.filter_by(id=file_id).one_or_none()
+    if ahp_file is None or ahp_file.ahp.data.user_id != current_user.id:
+        raise RaiseError("AHP File is not Found", 404)
+    return jsonify(ahp_file.to_dict()), 200
 
 # AHP File Delete
 @app.delete('/api/ahp/<ahp_id>/file/<file_id>')
@@ -1849,7 +1873,6 @@ def ahp_method_run(ahp_id):
             inc+=1
         crisps = []
         if ahp_criterias[index].crisp_type == 0:
-            print(crisps_list)
             crisps = generate_crisp_number(crisp_list=crisps_list, importance_list=importance_number)
             if crisps['status'] is False:
                 raise RaiseError(crisps['CR'], 412)
@@ -1898,10 +1921,10 @@ def ahp_method_run(ahp_id):
 @app.delete('/api/saw/<saw_id>/file/<file_id>/delete')
 @jwt_required()
 def saw_result_delete(saw_id, file_id):
-    saw = SAW.query.filter_by(id=saw_id, user_id=current_user.id).one_or_none()
-    if saw is None:
+    saw = SAW.query.filter_by(id=saw_id).one_or_none()
+    if saw is None or saw.data.user_id != current_user.id:
         raise RaiseError("SAW is Not Found", 404)
-    saw_file = SAWResultFile.filter_by(saw_id=saw_id, id=file_id).one_or_none()
+    saw_file = SAWResultFile.query.filter_by(saw_id=saw_id, id=file_id).one_or_none()
     if saw_file is None:
         raise RaiseError("SAW File is Not Found", 404)
     db.session.delete(saw_file)
@@ -1911,12 +1934,12 @@ def saw_result_delete(saw_id, file_id):
 @app.delete('/api/ahp/<ahp_id>/file/<file_id>/delete')
 @jwt_required()
 def ahp_result_delete(ahp_id, file_id):
-    ahp = SAW.query.filter_by(id=ahp_id, user_id=current_user.id).one_or_none()
-    if ahp is None:
-        raise RaiseError("SAW is Not Found", 404)
-    ahp_file = SAWResultFile.filter_by(saw_id=ahp_id, id=file_id).one_or_none()
+    ahp = AHP.query.filter_by(id=ahp_id).one_or_none()
+    if ahp is None or ahp.data.user_id != current_user.id:
+        raise RaiseError("AHP is Not Found", 404)
+    ahp_file = AHPResultFile.query.filter_by(ahp_id=ahp_id, id=file_id).one_or_none()
     if ahp_file is None:
-        raise RaiseError("SAW File is Not Found", 404)
+        raise RaiseError("AHP File is Not Found", 404)
     db.session.delete(ahp_file)
     db.session.commit()
     return jsonify(message="AHP File deleted"), 200
