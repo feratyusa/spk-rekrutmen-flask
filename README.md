@@ -22,3 +22,5 @@ Teknologi: Flask
 
 - Metode SAW dan AHP dapat dilihat pada folder `method`
 - Kedua metode dapat dicoba secara manual dan cara penggunaan dapat melihat comment pada `saw.py` dan `ahp.py`
+
+Frontend Aplikasi: [SPK Frontend](https://github.com/feratyusa/spk-rekrutmen-react)
